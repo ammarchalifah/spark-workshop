@@ -1,0 +1,86 @@
+services:
+  spark-master:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: spark-master
+    hostname: spark-master
+    command: ["/opt/spark/workshop/entrypoint-master.sh"]
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - workshop-data:/workspace/data
+      - ..:/workspace:ro
+    networks:
+      - spark-net
+
+  spark-worker-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    command: ["/opt/spark/workshop/entrypoint-worker.sh"]
+    environment:
+      SPARK_WORKER_WEBUI_PORT: "8081"
+    ports:
+      - "8081:8081"
+    depends_on:
+      - spark-master
+    volumes:
+      - workshop-data:/workspace/data
+      - ..:/workspace:ro
+    networks:
+      - spark-net
+
+  spark-worker-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    command: ["/opt/spark/workshop/entrypoint-worker.sh"]
+    environment:
+      SPARK_WORKER_WEBUI_PORT: "8082"
+    ports:
+      - "8082:8082"
+    depends_on:
+      - spark-master
+    volumes:
+      - workshop-data:/workspace/data
+      - ..:/workspace:ro
+    networks:
+      - spark-net
+
+  jupyter-lab:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: jupyter-lab
+    hostname: jupyter-lab
+    command: ["/opt/spark/workshop/entrypoint-jupyter.sh"]
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+    depends_on:
+      - spark-master
+      - spark-worker-1
+      - spark-worker-2
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      SPARK_DRIVER_HOST: jupyter-lab
+      SPARK_DRIVER_BIND_ADDRESS: "0.0.0.0"
+      PYTHONPATH: /workspace
+    volumes:
+      - workshop-data:/workspace/data
+      - ..:/workspace
+    networks:
+      - spark-net
+
+volumes:
+  workshop-data:
+
+networks:
+  spark-net:
+    driver: bridge
