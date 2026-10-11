@@ -37,332 +37,422 @@ def write_nb(path: Path, cells: list) -> None:
     print(f"Wrote {path.relative_to(ROOT)}")
 
 
-def module_01_template():
+def module_01():
     write_nb(
-        ROOT / "01-how-spark-works/01_how_spark_works_template.ipynb",
+        ROOT / "01-how-spark-works/01_how_spark_works.ipynb",
         [
-            md("# Module 01 — How Spark Works\n\nInstructor template. Open Spark UI before running actions."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if '/workspace' in sys.path[0] or __import__('pathlib').Path('/workspace').exists() else '.')\n\nfrom shared.spark_session import get_spark, ui_links, explain_plan\nfrom shared import config\n\nspark = get_spark('module-01-how-spark-works')\nui_links()"
+            md(
+                "# Module 01 — How Spark Works\n\n"
+                "Focus: distributed execution, reading the Spark UI, and how configs change the physical plan.\n\n"
+                "Open http://localhost:4040 before running any **action**."
             ),
-            md("## Load Data\n\nNYC yellow taxi trips + zone lookup (public TLC dataset)."),
             code(
-                "trips = spark.read.parquet(*config.yellow_taxi_paths())\nzones = spark.read.option('header', True).csv(config.zones_path())\nprint(f'Trips: {trips.count():,} rows')\nprint(f'Zones: {zones.count():,} rows')"
+                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n\n"
+                "from shared.spark_session import get_spark, ui_links, explain_plan\n"
+                "from shared import config\n\n"
+                "spark = get_spark('module-01-how-spark-works')\nui_links()"
             ),
-            md("## 1. Aggregation\n\nRun a `groupBy` + `count`. Open **Jobs** and **Stages** tabs at http://localhost:4040"),
+            md("## Load Data\n\nNYC yellow taxi trips (public TLC dataset). First run downloads to `data/cache/` (~100 MB). Spark cannot read Parquet from HTTPS."),
             code(
-                "vendor_counts = trips.groupBy('VendorID').count().orderBy('count', ascending=False)\nvendor_counts.show()\n# Observe: 1 job, typically 2 stages (partial agg + final agg or shuffle)"
+                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "print(f'Trips loaded — run an action to see row count')"
+            ),
+            code(
+                "print(f'Trips: {trips.count():,} rows')\n"
+                "# First action → first job appears in the UI"
+            ),
+            md(
+                "## Spark UI: Jobs, Stages, Tasks\n\n"
+                "| UI level | Meaning |\n"
+                "|----------|--------|\n"
+                "| **Job** | Created by an **action** (count, show, write) |\n"
+                "| **Stage** | Pipeline of work separated by a **shuffle** (data moving across the cluster) |\n"
+                "| **Task** | One unit of work on one partition, on one executor |\n\n"
+                "Transformations alone do not create jobs — they only build the plan."
+            ),
+            md("## 1. Aggregation\n\nA `groupBy` collects rows across the cluster. Check **Jobs** and **Stages** tabs."),
+            code(
+                "vendor_counts = trips.groupBy('VendorID').count().orderBy('count', ascending=False)\n"
+                "vendor_counts.show()\n"
+                "# How many jobs? stages? tasks per stage?"
             ),
             code("explain_plan(vendor_counts)"),
-            md("## 2. Window Function\n\nWindow functions often trigger a shuffle to distribute rows within each partition group."),
+            md(
+                "## 2. Window Function\n\n"
+                "Window functions need rows from the same group on the same machine. "
+                "That data movement creates a new **stage boundary** in the UI — look for **Shuffle Read/Write** metrics."
+            ),
             code(
-                "from pyspark.sql import Window\nfrom pyspark.sql.functions import row_number, col\n\nw = Window.partitionBy('VendorID').orderBy(col('tpep_pickup_datetime').desc())\nranked = trips.withColumn('rn', row_number().over(w)).filter('rn <= 3')\nranked.select('VendorID', 'tpep_pickup_datetime', 'rn').show(10)\n# Observe: Exchange (shuffle) stage in UI"
+                "from pyspark.sql import Window\n"
+                "from pyspark.sql.functions import row_number, col\n\n"
+                "w = Window.partitionBy('VendorID').orderBy(col('tpep_pickup_datetime').desc())\n"
+                "ranked = trips.withColumn('rn', row_number().over(w)).filter('rn <= 3')\n"
+                "ranked.select('VendorID', 'tpep_pickup_datetime', 'rn').show(10)"
             ),
             code("explain_plan(ranked)"),
-            md("## 3. Join\n\nJoin trips to zone lookup on `PULocationID = LocationID`. Watch shuffle read/write in Stages tab."),
-            code(
-                "joined = trips.join(\n    zones.withColumnRenamed('LocationID', 'PULocationID'),\n    on='PULocationID',\n    how='left'\n)\njoined.select('PULocationID', 'Zone', 'Borough', 'total_amount').show(5)\n# Observe: BroadcastExchange (small zones table) or SortMergeJoin + Exchange"
-            ),
-            code("explain_plan(joined)"),
-            md("## 4. Spark UI Literacy\n\n| UI Level | What it represents |\n|----------|--------------------|\n| **Job** | One action triggered this job |\n| **Stage** | Pipeline between shuffles |\n| **Task** | One partition's work on one executor |\n\nCheck **SQL** tab for the physical plan linked to each query."),
-            md("## 5. Query Planner Non-Determinism\n\nThe same logical query can produce different physical plans depending on stats and configs."),
-            code(
-                "# Plan A: default broadcast threshold\nspark.conf.set('spark.sql.autoBroadcastJoinThreshold', '10MB')\nsmall = zones.limit(100)\nplan_a = trips.join(small.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID')\nplan_a.explain('formatted')"
+            md(
+                "## 3. Combining Two Datasets\n\n"
+                "When Spark combines two datasets, data must be aligned across executors. "
+                "Don't worry about *how* yet — just observe that new stages appear and shuffle bytes increase."
             ),
             code(
-                "# Plan B: disable broadcast — forces shuffle join\nspark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')\nplan_b = trips.join(zones.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID')\nplan_b.explain('formatted')\n# Compare: BroadcastHashJoin vs SortMergeJoin"
+                "zones = spark.read.option('header', True).csv(config.zones_path())\n"
+                "enriched = trips.join(\n"
+                "    zones.withColumnRenamed('LocationID', 'PULocationID'),\n"
+                "    on='PULocationID',\n"
+                "    how='left',\n"
+                ")\n"
+                "enriched.select('PULocationID', 'Zone', 'Borough', 'total_amount').show(5)"
+            ),
+            code("explain_plan(enriched)"),
+            md(
+                "## 4. The Physical Plan Is Not Fixed\n\n"
+                "The same logical query can produce different physical plans depending on **configuration**. "
+                "Spark chooses at runtime — your code alone does not determine the plan."
             ),
             code(
-                "# Reset\nspark.conf.set('spark.sql.autoBroadcastJoinThreshold', '10MB')"
+                "# Config A: fewer shuffle partitions\n"
+                "spark.conf.set('spark.sql.shuffle.partitions', '8')\n"
+                "plan_a = trips.groupBy('PULocationID').count()\n"
+                "plan_a.explain('formatted')"
             ),
-            md("## Key Takeaways\n\n1. Transformations are lazy; actions trigger jobs.\n2. Shuffles (Exchange) create new stages — expensive in distributed systems.\n3. Catalyst chooses plans based on data size, stats, and configs — not fixed by your code alone."),
+            code(
+                "# Config B: more shuffle partitions\n"
+                "spark.conf.set('spark.sql.shuffle.partitions', '200')\n"
+                "plan_b = trips.groupBy('PULocationID').count()\n"
+                "plan_b.explain('formatted')\n"
+                "# Compare partition counts in the plan"
+            ),
+            code(
+                "# Run both and compare task counts in the Stages tab\n"
+                "plan_a.count()\n"
+                "plan_b.count()"
+            ),
+            code(
+                "# Reset to default\n"
+                "spark.conf.unset('spark.sql.shuffle.partitions')"
+            ),
+            md(
+                "## 5. Live Discussion (Walk Through Together)\n\n"
+                "Pick one query above and answer together:\n"
+                "1. How many jobs did the action create?\n"
+                "2. Which stage has shuffle read/write?\n"
+                "3. How many tasks ran in each stage?\n"
+                "4. What changed when we altered `spark.sql.shuffle.partitions`?"
+            ),
+            md(
+                "## Key Takeaways\n\n"
+                "1. Transformations are lazy; **actions** trigger jobs.\n"
+                "2. **Stages** split at shuffle boundaries — data moving across the cluster is expensive.\n"
+                "3. The physical plan depends on **configs and runtime conditions**, not just your code."
+            ),
         ],
     )
 
 
-def module_01_exercise():
+def module_02():
     write_nb(
-        ROOT / "01-how-spark-works/exercises/01_exercise.ipynb",
+        ROOT / "02-lazy-execution/02_lazy_execution.ipynb",
         [
-            md("# Module 01 — Exercise\n\nIdentify jobs, stages, and plan changes in the Spark UI."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark, ui_links\nfrom shared import config\n\nspark = get_spark('module-01-exercise')\nprint(ui_links())"
+            md(
+                "# Module 02 — Lazy Execution\n\n"
+                "Transformations build a DAG; actions execute it. "
+                "We'll use **expensive** pipelines so duplicated work is obvious in the UI and in wall-clock time."
             ),
-            code("trips = spark.read.parquet(*config.yellow_taxi_paths())\nzones = spark.read.option('header', True).csv(config.zones_path())"),
-            md("## Task 1\n\nRun the aggregation below. In the Spark UI (http://localhost:4040):\n- How many **jobs** were created?\n- How many **stages**?\n- How many **tasks** in each stage?"),
             code(
-                "# YOUR CODE: group by Borough (via join) and count trips\n# Hint: join trips to zones first\n\n# TODO: write join + groupBy + count + show\n"
-            ),
-            md("## Task 2\n\nRun a window function ranking trips by fare within each pickup zone. Identify the shuffle stage."),
-            code(
-                "# TODO: use Window.partitionBy('PULocationID').orderBy(col('total_amount').desc())\n# Show top 3 fares per zone\n"
-            ),
-            md("## Task 3\n\nDisable broadcast join and re-run the join. Compare physical plans."),
-            code(
-                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')\n# TODO: join and explain('formatted')\n"
-            ),
-        ],
-    )
-
-
-def module_02_template():
-    write_nb(
-        ROOT / "02-lazy-execution/02_lazy_execution_template.ipynb",
-        [
-            md("# Module 02 — Lazy Execution\n\nTransformations build a DAG; actions execute it."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\nfrom shared.spark_session import get_spark, ui_links\nfrom shared import config\n\nspark = get_spark('module-02-lazy-execution')\nui_links()"
+                "import sys\nimport time\n"
+                "sys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
+                "from pyspark.sql import Window\n"
+                "from pyspark.sql.functions import col, row_number, sum as _sum, avg, count\n"
+                "from pyspark import StorageLevel\n"
+                "from pyspark.sql import Observation\n"
+                "from shared.spark_session import get_spark, ui_links\n"
+                "from shared import config\n\n"
+                "spark = get_spark('module-02-lazy-execution')\nui_links()"
             ),
             code("trips = spark.read.parquet(*config.yellow_taxi_paths())"),
-            md("## 1. Lazy Transformations\n\nBuild a chain — no jobs until an action."),
+            md("## Expensive Pipeline Helper\n\nFilter → window → aggregate → sort. Each action on this hurts."),
             code(
-                "from pyspark.sql.functions import col\n\ndf = (trips\n    .filter('total_amount > 0')\n    .select('VendorID', 'PULocationID', 'total_amount', 'trip_distance', 'tpep_pickup_datetime')\n    .filter('PULocationID IS NOT NULL')\n    .withColumn('fare_per_mile', col('total_amount') / col('trip_distance'))\n)\nprint('No jobs yet — check UI Jobs tab (should be empty or unchanged)')"
+                "def expensive_pipeline(df):\n"
+                "    w = Window.partitionBy('PULocationID').orderBy(col('total_amount').desc())\n"
+                "    return (\n"
+                "        df.filter('total_amount > 0 AND trip_distance > 0')\n"
+                "        .withColumn('rn', row_number().over(w))\n"
+                "        .filter('rn <= 100')\n"
+                "        .groupBy('VendorID', 'PULocationID')\n"
+                "        .agg(_sum('total_amount').alias('total'), avg('trip_distance').alias('avg_dist'))\n"
+                "        .orderBy(col('total').desc())\n"
+                "    )"
+            ),
+            md("## 1. Lazy Transformations\n\nBuild the pipeline — no jobs until an action."),
+            code(
+                "pipeline = expensive_pipeline(trips)\n"
+                "print('Pipeline defined. Check Jobs tab — no new job yet.')"
             ),
             code(
-                "count = df.count()  # ACTION — triggers entire DAG\nprint(f'Row count: {count:,}')"
+                "t0 = time.perf_counter()\n"
+                "n = pipeline.count()\n"
+                "print(f'Rows: {n:,}  Time: {time.perf_counter() - t0:.1f}s')"
             ),
-            md("## 2. Branching DAG — Duplicated Work\n\nReusing `df_filtered` in two actions scans the source twice."),
+            md(
+                "## 2. Branching DAG — Duplicated Work\n\n"
+                "The same expensive ancestor is reused in **two actions**. "
+                "Without caching, Spark re-runs the entire pipeline twice — watch duplicated stages in the UI."
+            ),
             code(
-                "df_filtered = trips.filter('total_amount > 20')\n\nc1 = df_filtered.count()   # Action 1 — full scan\nc2 = df_filtered.filter('trip_distance > 5').count()  # Action 2 — scans df_filtered again\nprint(f'High fare trips: {c1:,}, long high-fare: {c2:,}')\n# UI: two jobs, duplicated scan stages"
+                "base = expensive_pipeline(trips)\n\n"
+                "t0 = time.perf_counter()\n"
+                "a = base.count()\n"
+                "t1 = time.perf_counter()\n"
+                "b = base.filter('total > 100').count()\n"
+                "t2 = time.perf_counter()\n\n"
+                "print(f'Action 1 (count):       {a:,} rows  {t1 - t0:.1f}s')\n"
+                "print(f'Action 2 (filter+count): {b:,} rows  {t2 - t1:.1f}s')\n"
+                "print(f'Total: {t2 - t0:.1f}s  — compare to a single action above')"
             ),
-            md("## 3. Wasteful Patterns\n\n`count()` + `filter().count()` on same base = repeated work."),
+            md(
+                "## 3. Three Actions — Even Worse\n\n"
+                "A third branch multiplies the pain. Note shuffle stages repeating in the UI."
+            ),
             code(
-                "base = trips.filter('passenger_count > 0')\nn1 = base.count()\nn2 = base.filter('total_amount > 50').count()\nprint(f'Passengers>0: {n1:,}, Fare>50: {n2:,}')\n# Both actions re-read and re-filter from source"
+                "base = expensive_pipeline(trips)\n\n"
+                "t0 = time.perf_counter()\n"
+                "r1 = base.count()\n"
+                "r2 = base.filter('avg_dist > 2').count()\n"
+                "r3 = base.groupBy('VendorID').count().count()\n"
+                "print(f'Three actions total: {time.perf_counter() - t0:.1f}s')"
             ),
-            md("## 4. Mitigation: Cache"),
+            md("## 4. Mitigation: Cache\n\nMaterialize once, reuse everywhere."),
             code(
-                "from pyspark import StorageLevel\n\nbase_cached = trips.filter('passenger_count > 0').persist(StorageLevel.MEMORY_AND_DISK)\nbase_cached.count()  # materializes cache\n\nn1 = base_cached.count()  # fast — from cache\nn2 = base_cached.filter('total_amount > 50').count()  # reads from cache\nprint(f'Cached: {n1:,}, Filtered: {n2:,}')\nbase_cached.unpersist()"
+                "base_cached = expensive_pipeline(trips).persist(StorageLevel.MEMORY_AND_DISK)\n\n"
+                "t0 = time.perf_counter()\n"
+                "base_cached.count()  # materializes\n"
+                "t_mat = time.perf_counter()\n"
+                "a = base_cached.count()\n"
+                "b = base_cached.filter('total > 100').count()\n"
+                "c = base_cached.groupBy('VendorID').count().count()\n"
+                "t_end = time.perf_counter()\n\n"
+                "print(f'Materialize: {t_mat - t0:.1f}s')\n"
+                "print(f'3 cached actions: {t_end - t_mat:.1f}s')\n"
+                "base_cached.unpersist()"
             ),
-            md("## 5. Mitigation: Checkpoint\n\nBreaks lineage by writing to reliable storage."),
+            md("## 5. Mitigation: Checkpoint\n\nBreaks lineage by writing intermediate results to storage."),
             code(
-                "spark.sparkContext.setCheckpointDir(str(config.CHECKPOINT_DIR))\n\ncp = trips.filter('total_amount > 0').checkpoint()\ncp.count()  # writes checkpoint, then counts\n# Subsequent actions read from checkpoint, not full lineage"
+                "spark.sparkContext.setCheckpointDir(str(config.CHECKPOINT_DIR))\n\n"
+                "cp = expensive_pipeline(trips).checkpoint()\n"
+                "t0 = time.perf_counter()\n"
+                "cp.count()\n"
+                "print(f'Checkpoint materialize: {time.perf_counter() - t0:.1f}s')\n\n"
+                "t0 = time.perf_counter()\n"
+                "cp.count()\n"
+                "cp.filter('total > 50').count()\n"
+                "print(f'Post-checkpoint actions: {time.perf_counter() - t0:.1f}s')"
             ),
-            md("## 6. Spark Observation — Metrics Without Full Actions"),
+            md("## 6. Spark Observation — Metrics in a Single Action"),
             code(
-                "from pyspark.sql import Observation\n\nobs = Observation('metrics')\nobserved = trips.filter('total_amount > 0').observe(obs, count('*'))\nobserved.count()  # single action collects observed metrics\nprint(obs.get)"
+                "obs = Observation('metrics')\n"
+                "observed = expensive_pipeline(trips).observe(obs, count('*'))\n"
+                "observed.count()\n"
+                "print(obs.get)"
             ),
-            md("## Key Takeaways\n\n1. Only **actions** trigger execution.\n2. Shared ancestors in branched DAGs cause **duplicate work** unless cached/checkpointed.\n3. Use `.cache()`, `.checkpoint()`, and `Observation` strategically."),
+            md(
+                "## 7. Live Discussion (Walk Through Together)\n\n"
+                "1. How many shuffle stages repeated across the three uncached actions?\n"
+                "2. How much time did caching save?\n"
+                "3. When would you choose checkpoint over cache?"
+            ),
+            md(
+                "## Key Takeaways\n\n"
+                "1. Only **actions** trigger execution.\n"
+                "2. Shared ancestors in branched DAGs cause **duplicate work** — expensive pipelines make this visible.\n"
+                "3. Use `.cache()`, `.checkpoint()`, and `Observation` to control cost."
+            ),
         ],
     )
 
 
-def module_02_exercise():
+def module_03():
     write_nb(
-        ROOT / "02-lazy-execution/exercises/02_exercise.ipynb",
+        ROOT / "03-storage-io/03_storage_io.ipynb",
         [
-            md("# Module 02 — Exercise\n\nFix duplicated work in a branched pipeline."),
+            md("# Module 03 — Storage I/O Performance\n\nCompare read/write performance across formats.\n\nUses **6 months** of taxi data (~18M rows) for meaningful timing gaps."),
             code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark\nfrom shared import config\n\nspark = get_spark('module-02-exercise')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())"
-            ),
-            md("## Task\n\nThis pipeline runs three actions on a shared base. Identify duplicated stages in the UI, then fix with the cheapest mitigation."),
-            code(
-                "base = trips.filter('trip_distance > 1')\n\n# Three actions — duplicated scans\na = base.count()\nb = base.filter('total_amount > 30').count()\nc = base.groupBy('VendorID').count().count()\nprint(a, b, c)"
-            ),
-            code(
-                "# TODO: refactor using .cache() or .checkpoint() to avoid duplicate scans\n# Re-run and compare job/stage counts in Spark UI\n"
-            ),
-        ],
-    )
-
-
-def module_03_template():
-    write_nb(
-        ROOT / "03-storage-io/03_storage_io_template.ipynb",
-        [
-            md("# Module 03 — Storage I/O Performance\n\nCompare read/write performance across formats."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\nfrom shared.spark_session import get_spark\nfrom shared import config\nfrom shared.utils import timed_action\n\nspark = get_spark('module-03-storage-io')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())\nsample = trips.limit(500_000)"
+                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
+                "from shared.spark_session import begin_module\nfrom shared import config\nfrom shared.utils import timed_read, drop_iceberg_table\n\n"
+                "spark = begin_module('module-03-storage-io')\n"
+                "io_paths = config.yellow_taxi_paths(config.IO_BENCHMARK_MONTHS)\n"
+                "sample = spark.read.parquet(*io_paths)\n"
+                "print(f'I/O benchmark dataset: {sample.count():,} rows from {len(io_paths)} files')"
             ),
             md("## Read Benchmarks"),
             code(
-                "out = config.OUTPUT_BASE / '03-read-bench'\nout.mkdir(parents=True, exist_ok=True)\n\n# Write sample in multiple formats for fair read comparison\nsample.write.mode('overwrite').json(str(out / 'json'))\nsample.write.mode('overwrite').parquet(str(out / 'parquet'))\nsample.writeTo('local.default.taxi_sample').using('iceberg').createOrReplace()"
+                "out = config.OUTPUT_BASE / '03-read-bench'\nout.mkdir(parents=True, exist_ok=True)\n\n"
+                "drop_iceberg_table(spark, 'local.default.taxi_sample')\n\n"
+                "sample.write.mode('overwrite').json(str(out / 'json'))\n"
+                "sample.write.mode('overwrite').parquet(str(out / 'parquet'))\n"
+                "sample.writeTo('local.default.taxi_sample').using('iceberg').create()"
             ),
             code(
-                "results = {}\n\n# JSON read\n_, t = timed_action(spark.read.json(str(out / 'json')))\nresults['json'] = t\n\n# Parquet serial\nspark.conf.set('spark.sql.parquet.enableVectorizedReader', 'false')\n_, t = timed_action(spark.read.parquet(str(out / 'parquet')))\nresults['parquet_serial'] = t\n\n# Parquet vectorized\nspark.conf.set('spark.sql.parquet.enableVectorizedReader', 'true')\n_, t = timed_action(spark.read.parquet(str(out / 'parquet')))\nresults['parquet_vectorized'] = t\n\n# Iceberg\n_, t = timed_action(spark.table('local.default.taxi_sample'))\nresults['iceberg'] = t\n\nfor fmt, sec in sorted(results.items(), key=lambda x: x[1]):\n    print(f'{fmt:20s} {sec:.2f}s')"
-            ),
-            md("## Iceberg Filter Pushdown\n\nCompare files scanned with and without a filter."),
-            code(
-                "spark.table('local.default.taxi_sample').filter('total_amount > 100').explain('formatted')\n# Iceberg skips files using column stats in metadata"
+                "results = {}\n\n"
+                "_, t = timed_read(spark, spark.read.json(str(out / 'json')))\nresults['json'] = t\n\n"
+                "spark.conf.set('spark.sql.parquet.enableVectorizedReader', 'false')\n"
+                "_, t = timed_read(spark, spark.read.parquet(str(out / 'parquet')))\nresults['parquet_serial'] = t\n\n"
+                "spark.conf.set('spark.sql.parquet.enableVectorizedReader', 'true')\n"
+                "_, t = timed_read(spark, spark.read.parquet(str(out / 'parquet')))\nresults['parquet_vectorized'] = t\n\n"
+                "_, t = timed_read(spark, spark.table('local.default.taxi_sample'))\nresults['iceberg'] = t\n\n"
+                "json_t = results['json']\n"
+                "for fmt, sec in sorted(results.items(), key=lambda x: x[1]):\n"
+                "    print(f'{fmt:20s} {sec:8.2f}s  {sec/json_t:7.1f}x vs json')"
             ),
             md("## Write Benchmarks"),
             code(
-                "write_out = config.OUTPUT_BASE / '03-write-bench'\nwrite_out.mkdir(parents=True, exist_ok=True)\n\nwrite_results = {}\n\nfor fmt, writer in [\n    ('json', lambda: sample.write.mode('overwrite').json(str(write_out / 'json'))),\n    ('csv', lambda: sample.write.mode('overwrite').option('header', True).csv(str(write_out / 'csv'))),\n    ('parquet', lambda: sample.write.mode('overwrite').parquet(str(write_out / 'parquet'))),\n    ('iceberg', lambda: sample.writeTo('local.default.taxi_write_bench').using('iceberg').createOrReplace()),\n]:\n    spark.catalog.clearCache()\n    import time\n    start = time.perf_counter()\n    writer()\n    write_results[fmt] = time.perf_counter() - start\n\nfor fmt, sec in sorted(write_results.items(), key=lambda x: x[1]):\n    print(f'{fmt:10s} write: {sec:.2f}s')"
+                "write_out = config.OUTPUT_BASE / '03-write-bench'\nwrite_out.mkdir(parents=True, exist_ok=True)\n"
+                "drop_iceberg_table(spark, 'local.default.taxi_write_bench')\n\n"
+                "write_results = {}\nimport time\n"
+                "to_write = sample.repartition(16)\n\n"
+                "for fmt, writer in [\n"
+                "    ('json', lambda: to_write.write.mode('overwrite').json(str(write_out / 'json'))),\n"
+                "    ('csv', lambda: to_write.write.mode('overwrite').option('header', True).csv(str(write_out / 'csv'))),\n"
+                "    ('parquet', lambda: to_write.write.mode('overwrite').parquet(str(write_out / 'parquet'))),\n"
+                "    ('iceberg', lambda: to_write.writeTo('local.default.taxi_write_bench').using('iceberg').create()),\n"
+                "]:\n"
+                "    spark.catalog.clearCache()\n"
+                "    start = time.perf_counter()\n    writer()\n    write_results[fmt] = time.perf_counter() - start\n\n"
+                "json_w = write_results['json']\n"
+                "for fmt, sec in sorted(write_results.items(), key=lambda x: x[1]):\n"
+                "    print(f'{fmt:10s} {sec:10.2f}s  {sec/json_w:7.1f}x vs json')"
             ),
-            md("## Key Takeaways\n\n1. Columnar formats (Parquet, Iceberg) outperform row-based (JSON, CSV).\n2. Vectorized Parquet reader is significantly faster than serial.\n3. Iceberg adds metadata overhead on write but enables pruning and ACID on read."),
+            md("## Key Takeaways\n\n1. Columnar formats outperform row-based.\n2. Vectorized Parquet reader is faster than serial.\n3. Iceberg adds metadata overhead on write but enables pruning on read."),
         ],
     )
 
 
-def module_03_exercise():
+def module_04():
     write_nb(
-        ROOT / "03-storage-io/exercises/03_exercise.ipynb",
+        ROOT / "04-udfs/04_udfs.ipynb",
         [
-            md("# Module 03 — Exercise\n\nBenchmark read performance with filter pushdown."),
+            md("# Module 04 — UDF Performance"),
             code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark\nfrom shared import config\nfrom shared.utils import timed_action\n\nspark = get_spark('module-03-exercise')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())"
+                "import sys\nimport hashlib\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
+                "from pyspark.sql.functions import udf, pandas_udf, sha2, col\n"
+                "from pyspark.sql.types import StringType\nimport pandas as pd\n"
+                "from shared.spark_session import get_spark\nfrom shared import config\nfrom shared.utils import timed_action\n\n"
+                "spark = get_spark('module-04-udfs')\n"
+                "df = spark.read.parquet(*config.yellow_taxi_paths()).select('PULocationID').filter('PULocationID IS NOT NULL').limit(1_000_000)"
             ),
-            md("## Task\n\nWrite 200k rows to both Parquet and Iceberg. Time reads with and without a filter on `total_amount > 50`."),
+            md("## Python UDF"),
             code(
-                "sample = trips.limit(200_000)\n# TODO: write to parquet and iceberg tables\n# TODO: time 4 reads (parquet filtered/unfiltered, iceberg filtered/unfiltered)\n"
+                "@udf(StringType())\ndef py_hash(val):\n    if val is None: return None\n    return hashlib.md5(str(val).encode()).hexdigest()\n\n"
+                "result_py = df.withColumn('h', py_hash('PULocationID'))\n_, t_py = timed_action(result_py)\nprint(f'Python UDF: {t_py:.2f}s')"
             ),
+            md("## Pandas UDF (Arrow)"),
+            code(
+                "@pandas_udf(StringType())\ndef pandas_hash(series: pd.Series) -> pd.Series:\n    return series.astype(str).apply(lambda x: hashlib.md5(x.encode()).hexdigest())\n\n"
+                "result_pandas = df.withColumn('h', pandas_hash('PULocationID'))\n_, t_pandas = timed_action(result_pandas)\nprint(f'Pandas UDF: {t_pandas:.2f}s')"
+            ),
+            md("## Native Spark"),
+            code(
+                "result_native = df.withColumn('h', sha2(col('PULocationID').cast('string'), 256))\n"
+                "_, t_native = timed_action(result_native)\nprint(f'Native Spark: {t_native:.2f}s')\n"
+                "print(f'Speedup vs Python UDF — Pandas: {t_py/t_pandas:.1f}x, Native: {t_py/t_native:.1f}x')"
+            ),
+            md("## Key Takeaways\n\nPrefer native Spark → Pandas UDF → Python UDF."),
         ],
     )
 
 
-def module_04_template():
+def module_05():
     write_nb(
-        ROOT / "04-udfs/04_udfs_template.ipynb",
+        ROOT / "05-shuffle-sort/05_shuffle_sort.ipynb",
         [
-            md("# Module 04 — UDF Performance\n\nSerialization cost: Python UDF vs Pandas UDF vs native Spark."),
+            md("# Module 05 — Shuffle & Sort"),
             code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\nfrom shared.spark_session import get_spark\nfrom shared import config\nfrom shared.utils import timed_action\n\nspark = get_spark('module-04-udfs')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())\ndf = trips.select('PULocationID').filter('PULocationID IS NOT NULL').limit(1_000_000)"
+                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
+                "from shared.spark_session import get_spark\nfrom shared import config\n\n"
+                "spark = get_spark('module-05-shuffle-sort')\n"
+                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "zones = spark.read.option('header', True).csv(config.zones_path())"
             ),
-            md("## 1. Vanilla Python UDF\n\nRow-by-row Python callback — highest serialization overhead."),
+            md("## Join Strategies"),
             code(
-                "from pyspark.sql.functions import udf\nfrom pyspark.sql.types import StringType\nimport hashlib\n\n@udf(StringType())\ndef py_hash(val):\n    if val is None:\n        return None\n    return hashlib.md5(str(val).encode()).hexdigest()\n\nresult_py = df.withColumn('h', py_hash('PULocationID'))\n_, t_py = timed_action(result_py)\nprint(f'Python UDF: {t_py:.2f}s')"
-            ),
-            md("## 2. Pandas UDF (Arrow)\n\nBatch transfer via Apache Arrow — much lower per-row overhead."),
-            code(
-                "import pandas as pd\nfrom pyspark.sql.functions import pandas_udf\n\n@pandas_udf(StringType())\ndef pandas_hash(series: pd.Series) -> pd.Series:\n    return series.astype(str).apply(lambda x: hashlib.md5(x.encode()).hexdigest())\n\nresult_pandas = df.withColumn('h', pandas_hash('PULocationID'))\n_, t_pandas = timed_action(result_pandas)\nprint(f'Pandas UDF: {t_pandas:.2f}s')"
-            ),
-            md("## 3. Native Spark SQL\n\nNo Python boundary — fastest."),
-            code(
-                "from pyspark.sql.functions import sha2, col\n\nresult_native = df.withColumn('h', sha2(col('PULocationID').cast('string'), 256))\n_, t_native = timed_action(result_native)\nprint(f'Native Spark: {t_native:.2f}s')"
+                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '50MB')\n"
+                "trips.join(zones.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID').explain('formatted')"
             ),
             code(
-                "print(f'\\nSpeedup vs Python UDF:')\nprint(f'  Pandas UDF:  {t_py/t_pandas:.1f}x')\nprint(f'  Native:      {t_py/t_native:.1f}x')"
+                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')\n"
+                "trips.join(zones.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID').explain('formatted')"
             ),
-            md("## Why?\n\n| Approach | Data path | Cost |\n|----------|-----------|------|\n| Python UDF | JVM → pickle → Python (per row) | Highest |\n| Pandas UDF | JVM → Arrow batches → Python | Medium |\n| Native | JVM only | Lowest |\n\nCheck Spark UI **Stages** tab: Python UDF shows `PythonUDF` in the plan."),
-            md("## Key Takeaways\n\n1. Prefer native Spark functions whenever possible.\n2. Pandas UDFs are the best choice when custom Python logic is required.\n3. Vanilla Python UDFs are a last resort for performance-critical paths."),
+            md("## Storage Partitioned Join (SPJ)"),
+            code(
+                "spark.sql('''\n    SET spark.sql.sources.v2.bucketing.enabled=true;\n"
+                "    SET spark.sql.sources.v2.bucketing.pushPartValues.enabled=true;\n"
+                "    SET spark.sql.iceberg.planning.preserve-data-grouping=true;\n"
+                "    SET spark.sql.requireAllClusterKeysForCoPartition=false;\n"
+                "    SET spark.sql.autoBroadcastJoinThreshold=-1;\n''')"
+            ),
+            code(
+                "trips_a = trips.select('VendorID', 'PULocationID', 'total_amount', 'tpep_pickup_datetime')\n"
+                "trips_b = trips.select('VendorID', 'DOLocationID', 'total_amount', 'tpep_dropoff_datetime')\n"
+                "trips_a.writeTo('local.default.trips_a').using('iceberg').partitionedBy('PULocationID').createOrReplace()\n"
+                "trips_b.writeTo('local.default.trips_b').using('iceberg').partitionedBy('PULocationID').createOrReplace()"
+            ),
+            code(
+                "spj = spark.sql('''SELECT a.VendorID, a.total_amount, b.total_amount\n"
+                "    FROM local.default.trips_a a JOIN local.default.trips_b b\n"
+                "    ON a.PULocationID = b.PULocationID AND a.VendorID = b.VendorID''')\n"
+                "spj.explain('formatted')\nspj.limit(10).show()"
+            ),
+            md("## Table Ordering"),
+            code(
+                "spark.sql('CREATE OR REPLACE TABLE local.default.trips_ordered USING iceberg AS SELECT * FROM local.default.trips_a')\n"
+                "spark.sql('ALTER TABLE local.default.trips_ordered WRITE ORDERED BY (PULocationID, total_amount)')\n"
+                "spark.sql(\"SHOW TBLPROPERTIES local.default.trips_ordered\").filter(\"key LIKE 'write.%' OR key = 'sort-order'\").show(truncate=False)"
+            ),
+            md("## Key Takeaways\n\n1. Broadcast avoids shuffle for small tables.\n2. SPJ eliminates shuffle when Iceberg partitions align.\n3. Table sort order improves reads but adds write cost."),
         ],
     )
 
 
-def module_04_exercise():
+def module_06():
     write_nb(
-        ROOT / "04-udfs/exercises/04_exercise.ipynb",
+        ROOT / "06-java-gc-gluten/06_java_gc_gluten.ipynb",
         [
-            md("# Module 04 — Exercise\n\nRewrite a Python UDF as Pandas UDF and native Spark."),
+            md("# Module 06 — Java GC & Gluten"),
             code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark\nfrom shared import config\n\nspark = get_spark('module-04-exercise')\ndf = spark.read.parquet(*config.yellow_taxi_paths()).select('PULocationID', 'DOLocationID').limit(500_000)"
+                "import sys\nimport os\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
+                "from shared.spark_session import get_spark, ui_links\nfrom shared import config\nfrom shared.utils import timed_action\n\n"
+                "spark = get_spark('module-06-java-gc')\nui_links()"
+            ),
+            md("## Part A — JVM / GC"),
+            code(
+                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "heavy = trips.groupBy('PULocationID', 'DOLocationID', 'VendorID').count()\n"
+                "_, t = timed_action(heavy)\nprint(f'Aggregation: {t:.2f}s — check GC Time in Executors tab')"
             ),
             code(
-                "from pyspark.sql.functions import udf\nfrom pyspark.sql.types import IntegerType\n\n@udf(IntegerType())\ndef location_sum(a, b):\n    if a is None or b is None:\n        return None\n    return int(a) + int(b)\n\n# TODO: rewrite as pandas_udf\n# TODO: rewrite as native Spark (col('PULocationID') + col('DOLocationID'))\n# Time all three approaches\n"
+                "for item in ['spark.driver.memory', 'spark.executor.memory', 'spark.memory.fraction']:\n"
+                "    print(f'{item}: {spark.conf.get(item, \"default\")}')"
             ),
-        ],
-    )
-
-
-def module_05_template():
-    write_nb(
-        ROOT / "05-shuffle-sort/05_shuffle_sort_template.ipynb",
-        [
-            md("# Module 05 — Shuffle & Sort\n\nJoin strategies, Storage Partitioned Join (SPJ), and table ordering."),
+            md("## Part B — Gluten (Optional)"),
             code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\nfrom shared.spark_session import get_spark\nfrom shared import config\n\nspark = get_spark('module-05-shuffle-sort')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())\nzones = spark.read.option('header', True).csv(config.zones_path())"
+                "GLUTEN_ENABLED = os.environ.get('SPARK_GLUTEN_ENABLED', 'false').lower() == 'true'\n"
+                "print(f'Gluten enabled: {GLUTEN_ENABLED}')\n"
+                "if GLUTEN_ENABLED:\n"
+                "    bench = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "    result = bench.groupBy('PULocationID').agg({'total_amount': 'sum'})\n"
+                "    result.explain('formatted')\n    _, t = timed_action(result)\n"
+                "    print(f'Gluten benchmark: {t:.2f}s')"
             ),
-            md("## 1. Broadcast Join"),
-            code(
-                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '50MB')\nsmall = zones.limit(50)\nplan = trips.join(small.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID')\nplan.explain('formatted')\n# Look for BroadcastHashJoin"
-            ),
-            md("## 2. Sort-Merge Join (disable broadcast)"),
-            code(
-                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')\nplan = trips.join(zones.withColumnRenamed('LocationID', 'PULocationID'), 'PULocationID')\nplan.explain('formatted')\n# Look for SortMergeJoin + Exchange"
-            ),
-            md("## 3. Storage Partitioned Join (SPJ)\n\nWhen both Iceberg tables share compatible partitioning, Spark can avoid shuffle."),
-            code(
-                "spark.sql('''\n    SET spark.sql.sources.v2.bucketing.enabled=true;\n    SET spark.sql.sources.v2.bucketing.pushPartValues.enabled=true;\n    SET spark.sql.iceberg.planning.preserve-data-grouping=true;\n    SET spark.sql.requireAllClusterKeysForCoPartition=false;\n    SET spark.sql.autoBroadcastJoinThreshold=-1;\n''')"
-            ),
-            code(
-                "trips_a = trips.select('VendorID', 'PULocationID', 'total_amount', 'tpep_pickup_datetime')\ntrips_b = trips.select('VendorID', 'DOLocationID', 'total_amount', 'tpep_dropoff_datetime')\n\n# Write two Iceberg tables partitioned identically\ntrips_a.writeTo('local.default.trips_a').using('iceberg').partitionedBy('PULocationID').createOrReplace()\ntrips_b.writeTo('local.default.trips_b').using('iceberg').partitionedBy('PULocationID').createOrReplace()"
-            ),
-            code(
-                "spj = spark.sql('''\n    SELECT a.VendorID, a.total_amount, b.total_amount\n    FROM local.default.trips_a a\n    JOIN local.default.trips_b b\n    ON a.PULocationID = b.PULocationID AND a.VendorID = b.VendorID\n''')\nspj.explain('formatted')\n# With SPJ: no Exchange before join\nspj.limit(10).show()"
-            ),
-            md("## 4. Table-Level Ordering\n\n`WRITE ORDERED BY` sets `write.distribution-mode=range`, causing sort on write."),
-            code(
-                "spark.sql('''\n    CREATE OR REPLACE TABLE local.default.trips_ordered\n    USING iceberg\n    AS SELECT * FROM local.default.trips_a\n''')\nspark.sql('ALTER TABLE local.default.trips_ordered WRITE ORDERED BY (PULocationID, total_amount)')\nspark.sql('SHOW TBLPROPERTIES local.default.trips_ordered').filter(\"key LIKE 'write.%' OR key = 'sort-order'\").show(truncate=False)"
-            ),
-            code(
-                "# Write with pre-sorted data, skip table ordering enforcement\nsorted_df = trips_a.orderBy('PULocationID', 'total_amount')\nsorted_df.writeTo('local.default.trips_presorted').using('iceberg') \\\n    .option('use-table-distribution-and-ordering', 'false') \\\n    .createOrReplace()"
-            ),
-            md("## Key Takeaways\n\n1. Broadcast join avoids shuffle for small tables.\n2. SPJ eliminates shuffle when Iceberg partition specs align.\n3. Table sort order improves read performance but adds write cost."),
-        ],
-    )
-
-
-def module_05_exercise():
-    write_nb(
-        ROOT / "05-shuffle-sort/exercises/05_exercise.ipynb",
-        [
-            md("# Module 05 — Exercise\n\nCompare join plans with and without SPJ."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark\nfrom shared import config\n\nspark = get_spark('module-05-exercise')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())"
-            ),
-            md("## Task\n\nCreate two Iceberg tables with matching partition columns. Compare `explain('formatted')` with SPJ configs on vs off."),
-            code(
-                "# TODO: create partitioned tables and run join\n# TODO: capture plan with SPJ enabled and disabled\n"
-            ),
-        ],
-    )
-
-
-def module_06_template():
-    write_nb(
-        ROOT / "06-java-gc-gluten/06_java_gc_gluten_template.ipynb",
-        [
-            md("# Module 06 — Java GC & Gluten\n\nPart A: JVM tuning. Part B: optional Gluten native acceleration."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\nfrom shared.spark_session import get_spark, ui_links\nfrom shared import config\nfrom shared.utils import timed_action\n\nspark = get_spark('module-06-java-gc')\nui_links()"
-            ),
-            md("## Part A — JVM / GC Tuning\n\nDriver and executor JVMs are separate processes. GC pauses show up in Spark UI **Executors** tab (GC Time column)."),
-            code(
-                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n\n# Memory-heavy job: wide aggregations trigger object allocation\nheavy = trips.groupBy('PULocationID', 'DOLocationID', 'VendorID').count()\n_, t = timed_action(heavy)\nprint(f'Aggregation completed in {t:.2f}s')\nprint('Check Executors tab → GC Time column at http://localhost:4040')"
-            ),
-            md("### Current JVM Settings\n\nInspect executor memory and GC config:"),
-            code(
-                "for item in ['spark.driver.memory', 'spark.executor.memory', 'spark.memory.fraction']:\n    print(f'{item}: {spark.conf.get(item, \"default\")}')"
-            ),
-            md("### GC Strategies (Java 17+)\n\n| GC | Flag | Best for |\n|----|------|----------|\n| G1 (default) | `-XX:+UseG1GC` | General purpose |\n| ZGC | `-XX:+UseZGC` | Low-latency, large heaps |\n\nTo experiment, set in `docker/spark-defaults.conf`:\n```\nspark.executor.extraJavaOptions  -XX:+UseG1GC -XX:G1HeapRegionSize=16m\nspark.driver.extraJavaOptions    -XX:+UseG1GC\n```\nThen restart the cluster."),
-            md("### Key Memory Configs\n\n- `spark.memory.fraction` (default 0.6) — fraction of heap for Spark vs user memory\n- `spark.memory.storageFraction` — cache vs execution memory split\n- OOM symptoms: tasks fail with `OutOfMemoryError`, spill to disk increases"),
-            md("## Part B — Gluten (Optional)\n\nGluten offloads Spark operators to native engines (Velox). Requires separate setup.\n\n> **Note:** Gluten 1.7.0 supports Spark 4.1 but excludes Iceberg in preview builds. The Gluten demo uses plain Parquet."),
-            code(
-                "import os\nGLUTEN_ENABLED = os.environ.get('SPARK_GLUTEN_ENABLED', 'false').lower() == 'true'\nprint(f'Gluten enabled: {GLUTEN_ENABLED}')\n\nif not GLUTEN_ENABLED:\n    print('Start with: make up-gluten (after installing Gluten binaries — see README)')\nelse:\n    bench = spark.read.parquet(*config.yellow_taxi_paths())\n    result = bench.groupBy('PULocationID').agg({'total_amount': 'sum', 'trip_distance': 'avg'})\n    result.explain('formatted')\n    _, t = timed_action(result)\n    print(f'Gluten benchmark: {t:.2f}s')"
-            ),
-            md("## Key Takeaways\n\n1. Monitor GC Time in Spark UI before tuning JVM flags.\n2. Increase executor memory or partitions before reaching for exotic GC settings.\n3. Gluten can accelerate CPU-bound SQL but requires compatible native libraries and excludes Iceberg today."),
-        ],
-    )
-
-
-def module_06_exercise():
-    write_nb(
-        ROOT / "06-java-gc-gluten/exercises/06_exercise.ipynb",
-        [
-            md("# Module 06 — Exercise\n\nAnalyze GC impact and document tuning recommendations."),
-            code(
-                "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '../..')\nfrom shared.spark_session import get_spark\nfrom shared import config\n\nspark = get_spark('module-06-exercise')\ntrips = spark.read.parquet(*config.yellow_taxi_paths())"
-            ),
-            md("## Task 1\n\nRun a memory-heavy aggregation. Record GC Time from the Executors tab."),
-            code(
-                "# TODO: run groupBy on 3+ columns, report GC time from UI\nheavy = trips.groupBy('PULocationID', 'DOLocationID', 'VendorID', 'payment_type').count()\nheavy.count()\n"
-            ),
-            md("## Task 2\n\nWrite 3 tuning recommendations based on your observations (memory, partitions, GC flags)."),
-            code("# YOUR ANSWER (markdown cell or print):\n# 1. ...\n# 2. ...\n# 3. ...\n"),
+            md("## Key Takeaways\n\n1. Monitor GC Time before tuning JVM flags.\n2. Gluten accelerates CPU-bound SQL but excludes Iceberg today."),
         ],
     )
 
 
 if __name__ == "__main__":
-    module_01_template()
-    module_01_exercise()
-    module_02_template()
-    module_02_exercise()
-    module_03_template()
-    module_03_exercise()
-    module_04_template()
-    module_04_exercise()
-    module_05_template()
-    module_05_exercise()
-    module_06_template()
-    module_06_exercise()
+    module_01()
+    module_02()
+    module_03()
+    module_04()
+    module_05()
+    module_06()
     print("Done.")

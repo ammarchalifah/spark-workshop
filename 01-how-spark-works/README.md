@@ -6,45 +6,32 @@
 
 - Understand distributed computing in Spark: driver, executors, partitions, tasks
 - Read the Spark UI: differentiate **Jobs**, **Stages**, and **Tasks**
-- Run aggregation, window function, and join examples and correlate code with UI
-- Understand that Spark physical plans are **not deterministic** — they depend on table stats, configs, and data size
+- See how shuffle creates **stage boundaries** (without diving into join strategies)
+- Understand that physical plans change based on **configuration**
 
 ## Concepts
 
 | Term | Definition |
 |------|------------|
-| **Job** | Triggered by an **action** (e.g. `.count()`). One job per action. |
-| **Stage** | A pipeline of tasks separated by a **shuffle boundary** (Exchange). |
+| **Job** | Triggered by an **action** (e.g. `.count()`). |
+| **Stage** | Pipeline of tasks separated by a shuffle (data moving across the cluster). |
 | **Task** | Unit of work on a single partition, run on one executor core. |
-| **Transformation** | Lazy operation that builds the DAG (filter, select, join). |
-| **Action** | Triggers execution (count, collect, write). |
+| **Transformation** | Lazy — builds the DAG. |
+| **Action** | Triggers execution. |
 
-## Spark UI Checkpoints
+## Demo Flow
 
-Open these URLs while running the notebook:
+1. **Aggregation** — observe jobs, stages, tasks
+2. **Window function** — shuffle creates a new stage boundary
+3. **Combining two datasets** — more stages appear (don't focus on *how* yet)
+4. **Config changes** — alter `spark.sql.shuffle.partitions`, compare plans and task counts
+5. **Live discussion** — walk through UI together
+
+## Spark UI
 
 - **Master UI:** http://localhost:8080
 - **Application UI:** http://localhost:4040
 
-For each demo, observe:
+## Notebook
 
-1. **Jobs tab** — how many jobs each action creates
-2. **Stages tab** — shuffle read/write bytes, duration
-3. **SQL tab** — physical plan and (with AQE) adaptive plan
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `01_how_spark_works_template.ipynb` | Instructor walkthrough |
-| `exercises/01_exercise.ipynb` | Attendee exercise |
-
-## Exercise
-
-Given a join query, identify in the Spark UI:
-
-1. Which stage corresponds to the shuffle
-2. How many tasks run per stage
-3. How the plan changes when you disable broadcast join
-
-Expected: attendees can explain why a join creates an Exchange stage and how broadcast join eliminates it.
+`01_how_spark_works.ipynb` — instructor-led walkthrough with live discussion prompts at the end.

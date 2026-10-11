@@ -2,12 +2,12 @@
 
 ## Input Data (Public, Runtime Fetch)
 
-Workshop notebooks read from public NYC TLC datasets over HTTPS. No large files are committed to this repository.
+Workshop datasets come from public NYC TLC URLs but are **downloaded to `data/cache/`** before Spark reads them. Spark cannot read Parquet directly from HTTPS. No large files are committed to this repository.
 
 | Dataset | URL | Used in |
 |---------|-----|---------|
-| Yellow taxi (Jan 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet` | Modules 01–05 |
-| Yellow taxi (Feb 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-02.parquet` | Modules 01–05 |
+| Yellow taxi (Jan–Feb 2024) | `.../yellow_tripdata_2024-0{1,2}.parquet` | Modules 01–02, 04–06 |
+| Yellow taxi (Jan–Jun 2024) | `.../yellow_tripdata_2024-0{1..6}.parquet` | Module 03 I/O benchmarks |
 | Taxi zone lookup | `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv` | Module 01 |
 
 ### Offline / Slow Network
@@ -35,6 +35,6 @@ data/output/
 
 These directories are created at runtime and excluded from git via `.gitignore`.
 
-## Docker Volume
+## Docker Mount
 
-In Docker mode, `data/` is mounted as a named volume (`workshop-data`) at `/workspace/data` across master, workers, and Jupyter containers. This ensures Iceberg tables and benchmarks are visible to all executors.
+In Docker mode, the host `data/` directory is bind-mounted at `/workspace/data` across master, workers, and Jupyter. Files cached with `make cache-data` on the host are immediately visible inside containers.

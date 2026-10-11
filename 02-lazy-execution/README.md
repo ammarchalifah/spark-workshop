@@ -5,8 +5,7 @@
 ## Learning Objectives
 
 - Distinguish transformations (lazy) from actions (eager)
-- Understand how an action triggers the entire DAG
-- Recognize branching DAGs that cause duplicated work
+- See how branching DAGs cause **duplicated work** on expensive pipelines
 - Apply mitigations: cache, checkpoint, and Spark Observation
 
 ## Concepts
@@ -15,26 +14,21 @@
 |------|----------|
 | Transformation | Lazy — builds DAG, no execution |
 | Action | Eager — triggers Spark job(s) |
-| Lineage | DAG of transformations back to source |
-| Cache | In-memory/disk shortcut for reuse within session |
-| Checkpoint | Breaks lineage by writing to reliable storage |
+| Cache | Reuse materialized data within session |
+| Checkpoint | Break lineage by writing to storage |
 
-## Spark UI Checkpoints
+## Demo Flow
 
-For each demo, watch the **Jobs** tab:
+Uses an **expensive pipeline** (filter → window → aggregate → sort) so duplicated work is visible in both wall-clock time and the Spark UI:
 
-1. After building transformations only — no new jobs
-2. After first `.count()` — one job appears
-3. After branched actions without cache — duplicated scan stages
-4. After `.cache()` — second action reuses cached data
+1. Lazy transformations — no jobs until action
+2. Branching DAG — two actions, duplicated shuffle stages
+3. Three actions — pain multiplies
+4. Cache — materialize once, reuse
+5. Checkpoint — break lineage
+6. Observation — metrics in a single action
+7. Live discussion
 
-## Files
+## Notebook
 
-| File | Purpose |
-|------|---------|
-| `02_lazy_execution_template.ipynb` | Instructor walkthrough |
-| `exercises/02_exercise.ipynb` | Attendee exercise |
-
-## Exercise
-
-Refactor a three-action pipeline to eliminate duplicate scans. Compare job count before and after in the Spark UI.
+`02_lazy_execution.ipynb` — instructor-led walkthrough with timing comparisons.

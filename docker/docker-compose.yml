@@ -5,12 +5,12 @@ services:
       dockerfile: docker/Dockerfile
     container_name: spark-master
     hostname: spark-master
-    command: ["/opt/spark/workshop/entrypoint-master.sh"]
+    command: ["/opt/spark/workshop/entrypoint-init.sh", "/opt/spark/workshop/entrypoint-master.sh"]
     ports:
       - "8080:8080"
       - "7077:7077"
     volumes:
-      - workshop-data:/workspace/data
+      - ../data:/workspace/data
       - ..:/workspace:ro
     networks:
       - spark-net
@@ -21,7 +21,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: spark-worker-1
     hostname: spark-worker-1
-    command: ["/opt/spark/workshop/entrypoint-worker.sh"]
+    command: ["/opt/spark/workshop/entrypoint-init.sh", "/opt/spark/workshop/entrypoint-worker.sh"]
     environment:
       SPARK_WORKER_WEBUI_PORT: "8081"
     ports:
@@ -29,7 +29,7 @@ services:
     depends_on:
       - spark-master
     volumes:
-      - workshop-data:/workspace/data
+      - ../data:/workspace/data
       - ..:/workspace:ro
     networks:
       - spark-net
@@ -40,7 +40,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: spark-worker-2
     hostname: spark-worker-2
-    command: ["/opt/spark/workshop/entrypoint-worker.sh"]
+    command: ["/opt/spark/workshop/entrypoint-init.sh", "/opt/spark/workshop/entrypoint-worker.sh"]
     environment:
       SPARK_WORKER_WEBUI_PORT: "8082"
     ports:
@@ -48,7 +48,7 @@ services:
     depends_on:
       - spark-master
     volumes:
-      - workshop-data:/workspace/data
+      - ../data:/workspace/data
       - ..:/workspace:ro
     networks:
       - spark-net
@@ -59,7 +59,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: jupyter-lab
     hostname: jupyter-lab
-    command: ["/opt/spark/workshop/entrypoint-jupyter.sh"]
+    command: ["/opt/spark/workshop/entrypoint-init.sh", "/opt/spark/workshop/entrypoint-jupyter.sh"]
     ports:
       - "8888:8888"
       - "4040:4040"
@@ -73,13 +73,10 @@ services:
       SPARK_DRIVER_BIND_ADDRESS: "0.0.0.0"
       PYTHONPATH: /workspace
     volumes:
-      - workshop-data:/workspace/data
+      - ../data:/workspace/data
       - ..:/workspace
     networks:
       - spark-net
-
-volumes:
-  workshop-data:
 
 networks:
   spark-net:

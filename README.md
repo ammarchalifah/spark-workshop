@@ -38,7 +38,7 @@ make up
 open http://localhost:8888
 ```
 
-Every notebook starts with:
+Each module has a single instructor-led notebook. Every notebook starts with:
 
 ```python
 from shared.spark_session import get_spark
@@ -146,7 +146,15 @@ Outputs go to `./data/output/`.
 
 ### Spark Application UI not accessible at :4040
 
-The driver runs inside the `jupyter-lab` container. Port 4040 is mapped to localhost. Run at least one action in a notebook to start a Spark application.
+The App UI only exists while a Spark session is running. When you **shut down a kernel**, the driver stops and `:4040` goes away — that is expected.
+
+To start a new session in the next module:
+
+1. Open the new module notebook
+2. Run the first cell — it calls `begin_module(...)` which starts a fresh session
+3. Open http://localhost:4040
+
+If `:4040` is still unreachable after running the first cell, restart the kernel and run the first cell again. Avoid using "Shut Down Kernel" without running `stop_spark()` first — `begin_module()` handles cleanup automatically.
 
 ### Connection refused to spark-master:7077
 

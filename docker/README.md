@@ -58,11 +58,15 @@ Both are set in `spark-defaults.conf`.
 
 ### Permission errors on data volume
 
-Output directories are created by entrypoint scripts. If you see permission issues, run:
+If you see `Permission denied` on `/workspace/data/output`, rebuild and recreate the volume:
 
 ```bash
-make clean && make up
+make down
+docker compose -f docker/docker-compose.yml down -v
+make up
 ```
+
+The `entrypoint-init.sh` script creates output dirs and fixes ownership on startup.
 
 ### Port already in use
 
