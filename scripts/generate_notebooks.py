@@ -275,14 +275,13 @@ def module_03():
     write_nb(
         ROOT / "03-storage-io/03_storage_io.ipynb",
         [
-            md("# Module 03 — Storage I/O Performance\n\nCompare read/write performance across formats.\n\nUses **6 months** of taxi data (~18M rows) for meaningful timing gaps."),
+            md("# Module 03 — Storage I/O Performance\n\nCompare read/write performance across formats."),
             code(
                 "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
-                "from shared.spark_session import begin_module\nfrom shared import config\nfrom shared.utils import timed_read, drop_iceberg_table\n\n"
-                "spark = begin_module('module-03-storage-io')\n"
-                "io_paths = config.yellow_taxi_paths(config.IO_BENCHMARK_MONTHS)\n"
-                "sample = spark.read.parquet(*io_paths)\n"
-                "print(f'I/O benchmark dataset: {sample.count():,} rows from {len(io_paths)} files')"
+                "from shared.spark_session import get_spark\nfrom shared import config\nfrom shared.utils import timed_action, drop_iceberg_table\n\n"
+                "spark = get_spark('module-03-storage-io')\n"
+                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "sample = trips.limit(500_000)"
             ),
             md("## Read Benchmarks"),
             code(
@@ -294,33 +293,27 @@ def module_03():
             ),
             code(
                 "results = {}\n\n"
-                "_, t = timed_read(spark, spark.read.json(str(out / 'json')))\nresults['json'] = t\n\n"
+                "_, t = timed_action(spark.read.json(str(out / 'json')))\nresults['json'] = t\n\n"
                 "spark.conf.set('spark.sql.parquet.enableVectorizedReader', 'false')\n"
-                "_, t = timed_read(spark, spark.read.parquet(str(out / 'parquet')))\nresults['parquet_serial'] = t\n\n"
+                "_, t = timed_action(spark.read.parquet(str(out / 'parquet')))\nresults['parquet_serial'] = t\n\n"
                 "spark.conf.set('spark.sql.parquet.enableVectorizedReader', 'true')\n"
-                "_, t = timed_read(spark, spark.read.parquet(str(out / 'parquet')))\nresults['parquet_vectorized'] = t\n\n"
-                "_, t = timed_read(spark, spark.table('local.default.taxi_sample'))\nresults['iceberg'] = t\n\n"
-                "json_t = results['json']\n"
-                "for fmt, sec in sorted(results.items(), key=lambda x: x[1]):\n"
-                "    print(f'{fmt:20s} {sec:8.2f}s  {sec/json_t:7.1f}x vs json')"
+                "_, t = timed_action(spark.read.parquet(str(out / 'parquet')))\nresults['parquet_vectorized'] = t\n\n"
+                "_, t = timed_action(spark.table('local.default.taxi_sample'))\nresults['iceberg'] = t\n\n"
+                "for fmt, sec in sorted(results.items(), key=lambda x: x[1]):\n    print(f'{fmt:20s} {sec:.2f}s')"
             ),
             md("## Write Benchmarks"),
             code(
                 "write_out = config.OUTPUT_BASE / '03-write-bench'\nwrite_out.mkdir(parents=True, exist_ok=True)\n"
                 "drop_iceberg_table(spark, 'local.default.taxi_write_bench')\n\n"
-                "write_results = {}\nimport time\n"
-                "to_write = sample.repartition(16)\n\n"
+                "write_results = {}\nimport time\n\n"
                 "for fmt, writer in [\n"
-                "    ('json', lambda: to_write.write.mode('overwrite').json(str(write_out / 'json'))),\n"
-                "    ('csv', lambda: to_write.write.mode('overwrite').option('header', True).csv(str(write_out / 'csv'))),\n"
-                "    ('parquet', lambda: to_write.write.mode('overwrite').parquet(str(write_out / 'parquet'))),\n"
-                "    ('iceberg', lambda: to_write.writeTo('local.default.taxi_write_bench').using('iceberg').create()),\n"
+                "    ('json', lambda: sample.write.mode('overwrite').json(str(write_out / 'json'))),\n"
+                "    ('csv', lambda: sample.write.mode('overwrite').option('header', True).csv(str(write_out / 'csv'))),\n"
+                "    ('parquet', lambda: sample.write.mode('overwrite').parquet(str(write_out / 'parquet'))),\n"
+                "    ('iceberg', lambda: sample.writeTo('local.default.taxi_write_bench').using('iceberg').create()),\n"
                 "]:\n"
-                "    spark.catalog.clearCache()\n"
                 "    start = time.perf_counter()\n    writer()\n    write_results[fmt] = time.perf_counter() - start\n\n"
-                "json_w = write_results['json']\n"
-                "for fmt, sec in sorted(write_results.items(), key=lambda x: x[1]):\n"
-                "    print(f'{fmt:10s} {sec:10.2f}s  {sec/json_w:7.1f}x vs json')"
+                "for fmt, sec in sorted(write_results.items(), key=lambda x: x[1]):\n    print(f'{fmt:10s} write: {sec:.2f}s')"
             ),
             md("## Key Takeaways\n\n1. Columnar formats outperform row-based.\n2. Vectorized Parquet reader is faster than serial.\n3. Iceberg adds metadata overhead on write but enables pruning on read."),
         ],
@@ -368,8 +361,8 @@ def module_05():
             md("# Module 05 — Shuffle & Sort"),
             code(
                 "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
-                "from shared.spark_session import get_spark\nfrom shared import config\n\n"
-                "spark = get_spark('module-05-shuffle-sort')\n"
+                "from shared.spark_session import begin_module\nfrom shared import config\nfrom shared.utils import drop_iceberg_table\n\n"
+                "spark = begin_module('module-05-shuffle-sort')\n"
                 "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
                 "zones = spark.read.option('header', True).csv(config.zones_path())"
             ),
@@ -384,27 +377,43 @@ def module_05():
             ),
             md("## Storage Partitioned Join (SPJ)"),
             code(
-                "spark.sql('''\n    SET spark.sql.sources.v2.bucketing.enabled=true;\n"
-                "    SET spark.sql.sources.v2.bucketing.pushPartValues.enabled=true;\n"
-                "    SET spark.sql.iceberg.planning.preserve-data-grouping=true;\n"
-                "    SET spark.sql.requireAllClusterKeysForCoPartition=false;\n"
-                "    SET spark.sql.autoBroadcastJoinThreshold=-1;\n''')"
+                "spark.conf.set('spark.sql.sources.v2.bucketing.enabled', 'true')\n"
+                "spark.conf.set('spark.sql.sources.v2.bucketing.pushPartValues.enabled', 'true')\n"
+                "spark.conf.set('spark.sql.iceberg.planning.preserve-data-grouping', 'true')\n"
+                "spark.conf.set('spark.sql.requireAllClusterKeysForCoPartition', 'false')\n"
+                "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')"
             ),
             code(
                 "trips_a = trips.select('VendorID', 'PULocationID', 'total_amount', 'tpep_pickup_datetime')\n"
-                "trips_b = trips.select('VendorID', 'DOLocationID', 'total_amount', 'tpep_dropoff_datetime')\n"
-                "trips_a.writeTo('local.default.trips_a').using('iceberg').partitionedBy('PULocationID').createOrReplace()\n"
-                "trips_b.writeTo('local.default.trips_b').using('iceberg').partitionedBy('PULocationID').createOrReplace()"
+                "trips_b = trips.select('VendorID', 'PULocationID', 'total_amount', 'tpep_dropoff_datetime')\n\n"
+                "drop_iceberg_table(spark, 'local.default.trips_a')\n"
+                "drop_iceberg_table(spark, 'local.default.trips_b')\n\n"
+                "trips_a.writeTo('local.default.trips_a').using('iceberg').partitionedBy('PULocationID').create()\n"
+                "trips_b.writeTo('local.default.trips_b').using('iceberg').partitionedBy('PULocationID').create()"
             ),
             code(
                 "spj = spark.sql('''SELECT a.VendorID, a.total_amount, b.total_amount\n"
                 "    FROM local.default.trips_a a JOIN local.default.trips_b b\n"
                 "    ON a.PULocationID = b.PULocationID AND a.VendorID = b.VendorID''')\n"
-                "spj.explain('formatted')\nspj.limit(10).show()"
+                "spj.explain('formatted')\n"
+                "# SPJ success: no Exchange before the join\n"
+                "spj.limit(10).show()"
+            ),
+            md("### Compare: SPJ off → Exchange appears"),
+            code(
+                "spark.conf.set('spark.sql.sources.v2.bucketing.enabled', 'false')\n"
+                "spark.conf.set('spark.sql.iceberg.planning.preserve-data-grouping', 'false')\n\n"
+                "no_spj = spark.sql('''SELECT a.VendorID, a.total_amount, b.total_amount\n"
+                "    FROM local.default.trips_a a JOIN local.default.trips_b b\n"
+                "    ON a.PULocationID = b.PULocationID AND a.VendorID = b.VendorID''')\n"
+                "no_spj.explain('formatted')\n\n"
+                "spark.conf.set('spark.sql.sources.v2.bucketing.enabled', 'true')\n"
+                "spark.conf.set('spark.sql.iceberg.planning.preserve-data-grouping', 'true')"
             ),
             md("## Table Ordering"),
             code(
-                "spark.sql('CREATE OR REPLACE TABLE local.default.trips_ordered USING iceberg AS SELECT * FROM local.default.trips_a')\n"
+                "drop_iceberg_table(spark, 'local.default.trips_ordered')\n"
+                "spark.table('local.default.trips_a').writeTo('local.default.trips_ordered').using('iceberg').create()\n"
                 "spark.sql('ALTER TABLE local.default.trips_ordered WRITE ORDERED BY (PULocationID, total_amount)')\n"
                 "spark.sql(\"SHOW TBLPROPERTIES local.default.trips_ordered\").filter(\"key LIKE 'write.%' OR key = 'sort-order'\").show(truncate=False)"
             ),

@@ -6,8 +6,8 @@ Workshop datasets come from public NYC TLC URLs but are **downloaded to `data/ca
 
 | Dataset | URL | Used in |
 |---------|-----|---------|
-| Yellow taxi (Jan–Feb 2024) | `.../yellow_tripdata_2024-0{1,2}.parquet` | Modules 01–02, 04–06 |
-| Yellow taxi (Jan–Jun 2024) | `.../yellow_tripdata_2024-0{1..6}.parquet` | Module 03 I/O benchmarks |
+| Yellow taxi (Jan 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet` | Modules 01–05 |
+| Yellow taxi (Feb 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-02.parquet` | Modules 01–05 |
 | Taxi zone lookup | `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv` | Module 01 |
 
 ### Offline / Slow Network
