@@ -6,8 +6,8 @@
 - `jupyterlab` — started by `entrypoint-jupyter.sh`  
 - `pandas`, `pyarrow`, `ipykernel` — notebook and Pandas UDF module  
 
-Change this file when you add notebook dependencies, then rebuild:
+Change this file when you add notebook dependencies, then rebuild the image:
 
 ```bash
-./scripts/cluster-up.sh
+docker compose -f docker/docker-compose.yml up -d --build
 ```

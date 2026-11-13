@@ -4,11 +4,9 @@ PySpark exercises on a **multi-node Spark cluster** in Docker, with Jupyter Lab 
 
 ## Prerequisites
 
-Install **Docker Desktop** (macOS/Windows) or **Docker Engine + Compose plugin** (Linux). That is the only host dependency for running the lab.
+**Docker** with the **Compose** plugin ([requirements/SETUP.md](requirements/SETUP.md)). That is the only host dependency.
 
-Java 17, Python 3, PySpark, Jupyter Lab, and the Iceberg runtime JAR are baked into the image at build time (`docker/Dockerfile`, `requirements/requirements.txt`). Do not install Java or Python on the host unless you are developing the repo locally (see [requirements/SETUP.md](requirements/SETUP.md)).
-
-Give Docker at least **8 GB RAM** (16 GB recommended).
+Java 17, Python, PySpark, Jupyter, and Iceberg are in the cluster image (`docker/Dockerfile`). Allocate **8 GB+ RAM** to Docker (16 GB recommended).
 
 ## Stack (inside the image)
 
@@ -19,49 +17,51 @@ Give Docker at least **8 GB RAM** (16 GB recommended).
 | Java | 17 |
 | Jupyter | Lab 4.x |
 
-Spark **4.1** ships with the published Iceberg 1.12 runtime JAR. The `iceberg-spark-runtime-4.2_2.13` artifact is not on Maven yet; the exercises (SPJ, vectorized reads, Catalyst plans, table ordering) apply the same on 4.1.
+## Run the cluster
 
-## Setup and run the cluster
-
-### 1. Verify Docker (optional)
+From the **repository root**:
 
 ```bash
-./requirements/setup-macos.sh    # or setup-linux.sh
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-```powershell
-.\requirements\setup-windows.ps1
-```
-
-Install Docker first if the script fails: [requirements/SETUP.md](requirements/SETUP.md).
-
-### 2. Start the cluster
+Stop:
 
 ```bash
-./scripts/cluster-up.sh          # macOS / Linux
+docker compose -f docker/docker-compose.yml down
 ```
 
-```powershell
-.\scripts\cluster-up.ps1         # Windows
-```
-
-Equivalent command:
+Logs:
 
 ```bash
-docker compose -f docker/docker-compose.yml build
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml logs -f
 ```
 
-Open **http://localhost:8888** for Jupyter Lab.
-
-### 3. Stop / reset
+Reset local lab data (optional):
 
 ```bash
-./scripts/cluster-down.sh        # stop containers
-./scripts/cluster-clean.sh       # stop and remove data/cache + data/output
+docker compose -f docker/docker-compose.yml down -v
+rm -rf data/output data/cache
 ```
 
-`cluster-up` builds the image (installs Python deps from `requirements/requirements.txt`) and starts containers. On macOS/Linux with GNU Make, `make up` / `make down` / etc. wrap the same scripts.
+Open Jupyter at the **host port** mapped to container `8888` in `docker/docker-compose.yml` (default `8888` → http://localhost:8888). If you remap ports, use your chosen host ports for all UIs below.
+
+GNU Make wraps the same compose commands (`make up`, `make down`, …) on macOS/Linux when Make is installed.
+
+## Port map (default compose bindings)
+
+Host ports are defined in `docker/docker-compose.yml`. Change the left-hand side of each `ports:` entry if something is already bound on your machine.
+
+| Service | Container port | Default host port | Purpose |
+|---------|----------------|-------------------|---------|
+| jupyter-lab | 8888 | 8888 | Jupyter Lab |
+| jupyter-lab | 4040 | 4040 | Spark application UI |
+| spark-master | 8080 | 8080 | Master UI |
+| spark-master | 7077 | 7077 | Spark RPC (cluster internal; usually no browser) |
+| spark-worker-1 | 8081 | 8081 | Worker 1 UI |
+| spark-worker-2 | 8082 | 8082 | Worker 2 UI |
+
+`shared/config.py` exposes `MASTER_UI_URL` and `APP_UI_URL` for notebooks using these defaults; update them if you remap ports.
 
 ## Architecture
 
@@ -72,37 +72,24 @@ flowchart TB
     end
 
     subgraph compose [docker compose — spark-net]
-        Master["spark-master\n:8080 Master UI\n:7077 RPC"]
-        W1["spark-worker-1\n:8081 Worker UI"]
-        W2["spark-worker-2\n:8082 Worker UI"]
-        Jupyter["jupyter-lab\n:8888 Lab\n:4040 App UI"]
+        Master["spark-master"]
+        W1["spark-worker-1"]
+        W2["spark-worker-2"]
+        Jupyter["jupyter-lab"]
         Data[("bind mount\n./data → /workspace/data")]
     end
 
-    TLC["NYC TLC CloudFront\n(HTTPS)"]
+    TLC["NYC TLC CloudFront"]
 
-    Browser -->|8080| Master
-    Browser -->|4040| Jupyter
-    Browser -->|8888| Jupyter
+    Browser --> Jupyter
+    Browser --> Master
 
-    Jupyter -->|"spark://spark-master:7077 client mode"| Master
+    Jupyter -->|"spark://spark-master:7077"| Master
     W1 --> Master
     W2 --> Master
     Jupyter --> Data
-    W1 --> Data
-    W2 --> Data
-    Jupyter -->|"runtime fetch"| TLC
+    Jupyter --> TLC
 ```
-
-## Port map
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| Jupyter Lab | http://localhost:8888 | Notebooks |
-| Spark Master UI | http://localhost:8080 | Cluster overview |
-| Spark Worker 1 UI | http://localhost:8081 | Worker metrics |
-| Spark Worker 2 UI | http://localhost:8082 | Worker metrics |
-| Spark Application UI | http://localhost:4040 | Jobs, stages, tasks (per driver session) |
 
 ## Modules
 
@@ -115,7 +102,7 @@ flowchart TB
 | 05 | Shuffle, joins, SPJ, Iceberg table ordering | [05-shuffle-sort/](05-shuffle-sort/) |
 | 06 | JVM heap and GC in the Spark UI | [06-java-gc/](06-java-gc/) |
 
-Each module notebook starts with:
+First cell in each notebook:
 
 ```python
 from shared.spark_session import begin_module, ui_links
@@ -124,36 +111,31 @@ spark = begin_module("my-app-name")
 ui_links()
 ```
 
-Call `begin_module()` in the **first cell** when switching notebooks. It downloads missing TLC files to `data/cache/` on first run (bind-mounted to the host), starts a fresh Spark session, and binds the UI to port 4040.
+`begin_module()` downloads missing TLC data into `data/cache/` on first run, then starts Spark.
 
 ## Data
 
-Inputs are NYC TLC public datasets (not stored in git):
-
-- Yellow taxi: `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet`
-- Zone lookup: `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv`
-
-Iceberg warehouse and checkpoints: `data/output/` (gitignored). See [data/README.md](data/README.md).
+TLC inputs are fetched at runtime (not in git). Warehouse output: `data/output/` ([data/README.md](data/README.md)).
 
 ## Troubleshooting
 
-### Application UI missing at :4040
+### Application UI unreachable
 
-The UI exists only while a Spark session is active. After kernel shutdown, open the next notebook and run the first cell (`begin_module`).
+The app UI is only up while a Spark session runs. Run the first cell (`begin_module`) in the next notebook. Use the host port mapped to container `4040` (default 4040).
 
 ### `Connection refused` to `spark-master:7077`
 
-Wait for startup: `./scripts/cluster-logs.sh` or `docker compose -f docker/docker-compose.yml logs -f`.
+Wait for workers: `docker compose -f docker/docker-compose.yml logs -f`.
 
 ### OOM
 
-Lower executor memory in `docker/spark-defaults.conf` or give Docker more RAM.
+Tune `docker/spark-defaults.conf` or increase Docker memory.
 
 ### TLC download failures
 
-Ensure the Jupyter container has outbound HTTPS. Re-run the first notebook cell (`begin_module`); downloads resume into `data/cache/`. If a file is corrupt, delete it under `data/cache/` and run the cell again.
+Re-run `begin_module`. Delete a bad file under `data/cache/` and retry.
 
-More: [docker/README.md](docker/README.md).
+See [docker/README.md](docker/README.md).
 
 ## License
 

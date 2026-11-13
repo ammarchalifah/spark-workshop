@@ -2,64 +2,47 @@
 
 ## Services
 
-| Container | Hostname | Ports | Role |
-|-----------|----------|-------|------|
-| spark-master | spark-master | 8080, 7077 | Cluster master |
-| spark-worker-1 | spark-worker-1 | 8081 | Executor node |
-| spark-worker-2 | spark-worker-2 | 8082 | Executor node |
-| jupyter-lab | jupyter-lab | 8888, 4040 | Notebooks + Spark driver |
+| Container | Hostname | Role |
+|-----------|----------|------|
+| spark-master | spark-master | Master UI + RPC |
+| spark-worker-1 | spark-worker-1 | Executor |
+| spark-worker-2 | spark-worker-2 | Executor |
+| jupyter-lab | jupyter-lab | Jupyter + Spark driver (client mode) |
+
+Host **port mappings** live in `docker-compose.yml`. Adjust them if defaults conflict on your machine.
 
 ## Commands
 
-From the repository root:
+From repository root:
 
 ```bash
-./scripts/cluster-up.sh
-./scripts/cluster-down.sh
-./scripts/cluster-logs.sh
-```
-
-Or use Compose directly:
-
-```bash
-docker compose -f docker/docker-compose.yml build
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d --build
 docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml logs -f
 ```
 
-## Scaling workers
-
-The compose file defines two named workers so UI ports stay at 8081 and 8082. To change capacity, edit `docker-compose.yml` or add worker service definitions.
-
 ## Troubleshooting
 
 ### Worker cannot connect to master
-
-Wait for the master to be healthy:
 
 ```bash
 docker logs spark-master
 docker logs spark-worker-1
 ```
 
-### Jupyter cannot reach executors
+### Jupyter driver networking
 
-The driver runs in client mode inside `jupyter-lab`. Required settings (in `spark-defaults.conf`):
-
-- `spark.driver.host=jupyter-lab`
-- `spark.driver.bindAddress=0.0.0.0`
+Client-mode driver in `jupyter-lab` needs `spark.driver.host=jupyter-lab` and `spark.driver.bindAddress=0.0.0.0` (set in `spark-defaults.conf`).
 
 ### Permission errors on `data/output`
 
-Recreate after `entrypoint-init.sh` runs:
-
 ```bash
-./scripts/cluster-down.sh
 docker compose -f docker/docker-compose.yml down -v
-./scripts/cluster-up.sh
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-### Port already in use
+`entrypoint-init.sh` creates output dirs and fixes ownership on startup.
 
-Change host port mappings in `docker-compose.yml` if 8080, 8888, or 4040 conflict.
+### Custom ports
+
+If you remap Jupyter or the app UI, set `MASTER_UI_URL` / `APP_UI_URL` in `shared/config.py` (or pass env vars) so `ui_links()` in notebooks matches your browser URLs.
