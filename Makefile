@@ -1,4 +1,4 @@
-# Optional convenience targets for macOS/Linux (Make is not required — see README).
+# Optional shortcuts (GNU Make not required — see README).
 .PHONY: up down logs build clean
 
 COMPOSE = docker compose -f docker/docker-compose.yml
@@ -7,13 +7,14 @@ build:
 	$(COMPOSE) build
 
 up:
-	@./scripts/cluster-up.sh
+	$(COMPOSE) up -d --build
 
 down:
-	@./scripts/cluster-down.sh
+	$(COMPOSE) down
 
 logs:
-	@./scripts/cluster-logs.sh
+	$(COMPOSE) logs -f
 
 clean:
-	@./scripts/cluster-clean.sh
+	$(COMPOSE) down -v
+	rm -rf data/output data/cache
