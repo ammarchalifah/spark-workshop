@@ -1,7 +1,5 @@
 # Module 05 — Shuffle & Sort
 
-**Duration:** ~60 minutes
-
 ## Learning Objectives
 
 - Compare join strategies: broadcast, shuffle hash, sort-merge

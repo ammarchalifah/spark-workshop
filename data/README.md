@@ -1,40 +1,25 @@
-# Workshop Data
+# Data layout
 
-## Input Data (Public, Runtime Fetch)
+## Input (cache)
 
-Workshop datasets come from public NYC TLC URLs but are **downloaded to `data/cache/`** before Spark reads them. Spark cannot read Parquet directly from HTTPS. No large files are committed to this repository.
+Datasets come from NYC TLC HTTPS URLs. Spark does not read Parquet over HTTPS, so the Jupyter kernel downloads files into `data/cache/` via `shared.config.ensure_workshop_data()` (called from `begin_module()` in the first cell of each module).
 
-| Dataset | URL | Used in |
-|---------|-----|---------|
-| Yellow taxi (Jan 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet` | Modules 01–05 |
-| Yellow taxi (Feb 2024) | `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-02.parquet` | Modules 01–05 |
-| Taxi zone lookup | `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv` | Module 01 |
+| File | Source |
+|------|--------|
+| `yellow_tripdata_2024-01.parquet` | TLC trip data |
+| `yellow_tripdata_2024-02.parquet` | TLC trip data |
+| `taxi_zone_lookup.csv` | TLC zone lookup |
 
-### Offline / Slow Network
+First module start may take a few minutes while ~100 MB downloads. Later runs skip files that already exist.
 
-Pre-download datasets to avoid repeated HTTP reads:
+## Output (gitignored)
 
-```bash
-make cache-data
-```
+| Path | Contents |
+|------|----------|
+| `data/output/warehouse/` | Iceberg tables (Hadoop catalog) |
+| `data/output/checkpoints/` | RDD/DataFrame checkpoints |
+| `data/output/spark-events/` | Event logs (if enabled) |
 
-Cached files land in `data/cache/` and are mounted into containers at `/workspace/data/cache/`. Notebooks automatically prefer cached paths when available.
+## Bind mount
 
-## Output Data (Local, Gitignored)
-
-All workshop writes go to `data/output/`:
-
-```
-data/output/
-├── warehouse/          # Iceberg catalog root
-├── 03-read-bench/      # Module 03 format comparisons
-├── 03-write-bench/
-├── 05-spj/             # SPJ demo tables
-└── checkpoints/        # Module 02 checkpoints
-```
-
-These directories are created at runtime and excluded from git via `.gitignore`.
-
-## Docker Mount
-
-In Docker mode, the host `data/` directory is bind-mounted at `/workspace/data` across master, workers, and Jupyter. Files cached with `make cache-data` on the host are immediately visible inside containers.
+`./data` on the host maps to `/workspace/data` in master, workers, and Jupyter. Downloads and warehouse files persist across container restarts.

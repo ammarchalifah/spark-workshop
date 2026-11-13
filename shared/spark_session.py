@@ -49,6 +49,12 @@ def get_spark(app_name: str = "spark-workshop", extra_configs: dict[str, str] | 
     if _spark is not None:
         return _spark
 
+    if not config.IN_DOCKER:
+        raise RuntimeError(
+            "Spark sessions run only inside the Docker Jupyter container. "
+            "Start the cluster (see README), open http://localhost:8888, and run notebooks there."
+        )
+
     config.ensure_output_dirs()
     _register_cleanup()
 
@@ -85,9 +91,12 @@ def begin_module(app_name: str, extra_configs: dict[str, str] | None = None) -> 
     Start a clean Spark session for a new module notebook.
 
     Call this in the first cell of every module — especially after shutting down
-    a previous kernel. Stops any leftover session and binds the UI to port 4040.
+    a previous kernel. Ensures TLC files exist under data/cache/, stops any leftover
+    session, and binds the UI to port 4040.
     """
     stop_spark()
+    config.ensure_output_dirs()
+    config.ensure_workshop_data()
     return get_spark(app_name, extra_configs=extra_configs)
 
 

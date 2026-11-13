@@ -1,7 +1,5 @@
 # Module 01 — How Spark Works
 
-**Duration:** ~60 minutes
-
 ## Learning Objectives
 
 - Understand distributed computing in Spark: driver, executors, partitions, tasks

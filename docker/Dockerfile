@@ -14,7 +14,7 @@ ARG ICEBERG_JAR=iceberg-spark-runtime-4.1_2.13-${ICEBERG_VERSION}.jar
 RUN curl -fL -o /opt/spark/jars/${ICEBERG_JAR} \
     "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-4.1_2.13/${ICEBERG_VERSION}/${ICEBERG_JAR}"
 
-# Workshop Python dependencies
+# Python deps for Jupyter / PySpark in the cluster (see requirements/README.md)
 COPY requirements/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 

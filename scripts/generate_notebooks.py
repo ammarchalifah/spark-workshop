@@ -48,11 +48,11 @@ def module_01():
             ),
             code(
                 "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n\n"
-                "from shared.spark_session import get_spark, ui_links, explain_plan\n"
+                "from shared.spark_session import begin_module, ui_links, explain_plan\n"
                 "from shared import config\n\n"
-                "spark = get_spark('module-01-how-spark-works')\nui_links()"
+                "spark = begin_module('module-01-how-spark-works')\nui_links()"
             ),
-            md("## Load Data\n\nNYC yellow taxi trips (public TLC dataset). First run downloads to `data/cache/` (~100 MB). Spark cannot read Parquet from HTTPS."),
+            md("## Load Data\n\n`begin_module()` already fetched missing TLC files into `data/cache/`. Read Parquet from disk — Spark cannot read HTTPS directly."),
             code(
                 "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
                 "print(f'Trips loaded — run an action to see row count')"
@@ -424,35 +424,26 @@ def module_05():
 
 def module_06():
     write_nb(
-        ROOT / "06-java-gc-gluten/06_java_gc_gluten.ipynb",
+        ROOT / "06-java-gc/06_java_gc.ipynb",
         [
-            md("# Module 06 — Java GC & Gluten"),
+            md("# Module 06 — JVM and GC"),
             code(
-                "import sys\nimport os\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n"
-                "from shared.spark_session import get_spark, ui_links\nfrom shared import config\nfrom shared.utils import timed_action\n\n"
-                "spark = get_spark('module-06-java-gc')\nui_links()"
+                "import sys\nsys.path.insert(0, '/workspace')\n"
+                "from shared.spark_session import begin_module, ui_links\nfrom shared import config\nfrom shared.utils import timed_action\n\n"
+                "spark = begin_module('module-06-java-gc')\nui_links()"
             ),
-            md("## Part A — JVM / GC"),
-            code(
-                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
-                "heavy = trips.groupBy('PULocationID', 'DOLocationID', 'VendorID').count()\n"
-                "_, t = timed_action(heavy)\nprint(f'Aggregation: {t:.2f}s — check GC Time in Executors tab')"
-            ),
+            md("## Driver vs executor memory"),
             code(
                 "for item in ['spark.driver.memory', 'spark.executor.memory', 'spark.memory.fraction']:\n"
                 "    print(f'{item}: {spark.conf.get(item, \"default\")}')"
             ),
-            md("## Part B — Gluten (Optional)"),
+            md("## GC under load"),
             code(
-                "GLUTEN_ENABLED = os.environ.get('SPARK_GLUTEN_ENABLED', 'false').lower() == 'true'\n"
-                "print(f'Gluten enabled: {GLUTEN_ENABLED}')\n"
-                "if GLUTEN_ENABLED:\n"
-                "    bench = spark.read.parquet(*config.yellow_taxi_paths())\n"
-                "    result = bench.groupBy('PULocationID').agg({'total_amount': 'sum'})\n"
-                "    result.explain('formatted')\n    _, t = timed_action(result)\n"
-                "    print(f'Gluten benchmark: {t:.2f}s')"
+                "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
+                "heavy = trips.groupBy('PULocationID', 'DOLocationID', 'VendorID').count()\n"
+                "_, t = timed_action(heavy)\nprint(f'Aggregation: {t:.2f}s — open Executors tab and inspect GC Time')"
             ),
-            md("## Key Takeaways\n\n1. Monitor GC Time before tuning JVM flags.\n2. Gluten accelerates CPU-bound SQL but excludes Iceberg today."),
+            md("## Key Takeaways\n\n1. Read GC Time on the Executors tab before changing JVM flags.\n2. Driver OOM and executor OOM show up in different UI places and logs.\n3. `spark.memory.fraction` splits on-heap space between execution and storage."),
         ],
     )
 

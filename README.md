@@ -1,82 +1,100 @@
-# Spark Workshop
+# Spark + Iceberg Lab
 
-A hands-on, 6-hour workshop repository for deep conceptual understanding of Apache Spark with modern best practices. Attendees run PySpark jobs locally in a Docker-based multi-node cluster with Jupyter Lab and Apache Iceberg.
+PySpark exercises on a **multi-node Spark cluster** in Docker, with Jupyter Lab as the driver and **Apache Iceberg** as the default table format.
 
-## Stack
+## Prerequisites
+
+Install **Docker Desktop** (macOS/Windows) or **Docker Engine + Compose plugin** (Linux). That is the only host dependency for running the lab.
+
+Java 17, Python 3, PySpark, Jupyter Lab, and the Iceberg runtime JAR are baked into the image at build time (`docker/Dockerfile`, `requirements/requirements.txt`). Do not install Java or Python on the host unless you are developing the repo locally (see [requirements/SETUP.md](requirements/SETUP.md)).
+
+Give Docker at least **8 GB RAM** (16 GB recommended).
+
+## Stack (inside the image)
 
 | Component | Version |
 |-----------|---------|
 | Spark / PySpark | 4.1.x |
 | Iceberg | 1.12.0 (`iceberg-spark-runtime-4.1_2.13`) |
-| Java | 17 (21 also supported) |
-| Python | 3.10+ |
+| Java | 17 |
 | Jupyter | Lab 4.x |
 
-> **Why Spark 4.1 instead of 4.2?** As of Iceberg 1.12.0, the `iceberg-spark-runtime-4.2_2.13` JAR is not yet published to Maven. Spark 4.1 + Iceberg 1.12.0 is the stable combination for this Iceberg-focused workshop. All concepts (SPJ, vectorized reads, Catalyst plans, table ordering) apply identically.
+Spark **4.1** ships with the published Iceberg 1.12 runtime JAR. The `iceberg-spark-runtime-4.2_2.13` artifact is not on Maven yet; the exercises (SPJ, vectorized reads, Catalyst plans, table ordering) apply the same on 4.1.
 
-## Prerequisites
+## Setup and run the cluster
 
-- Docker Desktop or Docker Engine (8 GB RAM minimum recommended)
-- Java 17+ (for local-mode fallback)
-- Python 3.10+ (for local-mode fallback)
-
-See [requirements/SETUP.md](requirements/SETUP.md) for per-OS installation steps.
-
-## Quick Start
+### 1. Verify Docker (optional)
 
 ```bash
-# 1. Install Python dependencies (optional for Docker-only workflow)
-make setup
-
-# 2. (Optional) Pre-download datasets for slow/offline networks
-make cache-data
-
-# 3. Start the cluster
-make up
-
-# 4. Open Jupyter Lab
-open http://localhost:8888
+./requirements/setup-macos.sh    # or setup-linux.sh
 ```
 
-Each module has a single instructor-led notebook. Every notebook starts with:
-
-```python
-from shared.spark_session import get_spark
-spark = get_spark("my-app-name")
+```powershell
+.\requirements\setup-windows.ps1
 ```
+
+Install Docker first if the script fails: [requirements/SETUP.md](requirements/SETUP.md).
+
+### 2. Start the cluster
+
+```bash
+./scripts/cluster-up.sh          # macOS / Linux
+```
+
+```powershell
+.\scripts\cluster-up.ps1         # Windows
+```
+
+Equivalent command:
+
+```bash
+docker compose -f docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml up -d
+```
+
+Open **http://localhost:8888** for Jupyter Lab.
+
+### 3. Stop / reset
+
+```bash
+./scripts/cluster-down.sh        # stop containers
+./scripts/cluster-clean.sh       # stop and remove data/cache + data/output
+```
+
+`cluster-up` builds the image (installs Python deps from `requirements/requirements.txt`) and starts containers. On macOS/Linux with GNU Make, `make up` / `make down` / etc. wrap the same scripts.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph host [Attendee Machine]
+    subgraph host [Your machine]
         Browser[Browser]
     end
 
-    subgraph compose [docker compose spark-net]
+    subgraph compose [docker compose — spark-net]
         Master["spark-master\n:8080 Master UI\n:7077 RPC"]
         W1["spark-worker-1\n:8081 Worker UI"]
         W2["spark-worker-2\n:8082 Worker UI"]
         Jupyter["jupyter-lab\n:8888 Lab\n:4040 App UI"]
-        Vol[("workshop-data volume\n/workspace/data")]
+        Data[("bind mount\n./data → /workspace/data")]
     end
 
-    TLC["NYC TLC CloudFront\n(public HTTPS)"]
+    TLC["NYC TLC CloudFront\n(HTTPS)"]
 
     Browser -->|8080| Master
     Browser -->|4040| Jupyter
     Browser -->|8888| Jupyter
 
-    Jupyter -->|"spark://master:7077 client mode"| Master
+    Jupyter -->|"spark://spark-master:7077 client mode"| Master
     W1 --> Master
     W2 --> Master
-    Jupyter --> Vol
-    W1 --> Vol
-    W2 --> Vol
+    Jupyter --> Data
+    W1 --> Data
+    W2 --> Data
     Jupyter -->|"runtime fetch"| TLC
 ```
 
-## Port Map
+## Port map
 
 | Service | URL | Purpose |
 |---------|-----|---------|
@@ -84,92 +102,59 @@ flowchart TB
 | Spark Master UI | http://localhost:8080 | Cluster overview |
 | Spark Worker 1 UI | http://localhost:8081 | Worker metrics |
 | Spark Worker 2 UI | http://localhost:8082 | Worker metrics |
-| Spark Application UI | http://localhost:4040 | Per-session job/stage/task view |
+| Spark Application UI | http://localhost:4040 | Jobs, stages, tasks (per driver session) |
 
-## Workshop Agenda (~6 hours)
+## Modules
 
-| Module | Topic | Directory |
-|--------|-------|-----------|
-| 01 | How Spark works — distributed computing, Spark UI, query planner | [01-how-spark-works/](01-how-spark-works/) |
-| 02 | Lazy execution — actions, DAG branching, cache/checkpoint | [02-lazy-execution/](02-lazy-execution/) |
-| 03 | Storage I/O — JSON/Parquet/Iceberg read & write performance | [03-storage-io/](03-storage-io/) |
-| 04 | UDF performance — Python vs Pandas vs native Spark | [04-udfs/](04-udfs/) |
-| 05 | Shuffle & sort — join strategies, SPJ, table ordering | [05-shuffle-sort/](05-shuffle-sort/) |
-| 06 | Java GC tuning + optional Gluten demo | [06-java-gc-gluten/](06-java-gc-gluten/) |
+| # | Topic | Directory |
+|---|-------|-----------|
+| 01 | Distributed execution, Spark UI, query plans | [01-how-spark-works/](01-how-spark-works/) |
+| 02 | Lazy evaluation, actions, DAG branching, cache/checkpoint | [02-lazy-execution/](02-lazy-execution/) |
+| 03 | Storage I/O — JSON, Parquet, Iceberg benchmarks | [03-storage-io/](03-storage-io/) |
+| 04 | UDF cost — Python vs Pandas vs native Spark | [04-udfs/](04-udfs/) |
+| 05 | Shuffle, joins, SPJ, Iceberg table ordering | [05-shuffle-sort/](05-shuffle-sort/) |
+| 06 | JVM heap and GC in the Spark UI | [06-java-gc/](06-java-gc/) |
 
-## Data Sources
+Each module notebook starts with:
 
-Input data is fetched at runtime from public NYC TLC datasets (no large files in git):
+```python
+from shared.spark_session import begin_module, ui_links
 
-- Yellow taxi trips: `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet`
-- Taxi zone lookup: `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv`
-
-All workshop outputs are written to `data/output/` (Docker volume, gitignored).
-
-See [data/README.md](data/README.md) for details.
-
-## Run Modes
-
-### Recommended: Docker cluster
-
-```bash
-make up
+spark = begin_module("my-app-name")
+ui_links()
 ```
 
-Notebooks connect to `spark://spark-master:7077` automatically.
+Call `begin_module()` in the **first cell** when switching notebooks. It downloads missing TLC files to `data/cache/` on first run (bind-mounted to the host), starts a fresh Spark session, and binds the UI to port 4040.
 
-### Fallback: Local mode (no Docker)
+## Data
 
-```bash
-source .venv/bin/activate
-export SPARK_MASTER='local[*]'
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)  # macOS example
-jupyter lab
-```
+Inputs are NYC TLC public datasets (not stored in git):
 
-Outputs go to `./data/output/`.
+- Yellow taxi: `https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet`
+- Zone lookup: `https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv`
 
-## Makefile Commands
-
-| Command | Description |
-|---------|-------------|
-| `make setup` | Create venv and install Python deps |
-| `make build` | Build Docker images |
-| `make up` | Start cluster |
-| `make down` | Stop cluster |
-| `make logs` | Follow container logs |
-| `make cache-data` | Pre-download TLC datasets |
-| `make up-gluten` | Start optional Gluten profile (module 06) |
-| `make clean` | Stop cluster and remove volumes |
+Iceberg warehouse and checkpoints: `data/output/` (gitignored). See [data/README.md](data/README.md).
 
 ## Troubleshooting
 
-### Spark Application UI not accessible at :4040
+### Application UI missing at :4040
 
-The App UI only exists while a Spark session is running. When you **shut down a kernel**, the driver stops and `:4040` goes away — that is expected.
+The UI exists only while a Spark session is active. After kernel shutdown, open the next notebook and run the first cell (`begin_module`).
 
-To start a new session in the next module:
+### `Connection refused` to `spark-master:7077`
 
-1. Open the new module notebook
-2. Run the first cell — it calls `begin_module(...)` which starts a fresh session
-3. Open http://localhost:4040
+Wait for startup: `./scripts/cluster-logs.sh` or `docker compose -f docker/docker-compose.yml logs -f`.
 
-If `:4040` is still unreachable after running the first cell, restart the kernel and run the first cell again. Avoid using "Shut Down Kernel" without running `stop_spark()` first — `begin_module()` handles cleanup automatically.
+### OOM
 
-### Connection refused to spark-master:7077
+Lower executor memory in `docker/spark-defaults.conf` or give Docker more RAM.
 
-Wait for the cluster to finish starting (`make logs`). Ensure all containers are on the `spark-net` network.
+### TLC download failures
 
-### Out of memory errors
+Ensure the Jupyter container has outbound HTTPS. Re-run the first notebook cell (`begin_module`); downloads resume into `data/cache/`. If a file is corrupt, delete it under `data/cache/` and run the cell again.
 
-Reduce executor memory in `docker/spark-defaults.conf` or close other applications. Minimum 8 GB host RAM recommended.
-
-### Network errors reading TLC data
-
-Run `make cache-data` and restart the cluster. Cached files are read from `/workspace/data/cache/`.
-
-See [docker/README.md](docker/README.md) for more Docker-specific troubleshooting.
+More: [docker/README.md](docker/README.md).
 
 ## License
 
-Apache License 2.0 — workshop materials are free to use and adapt for educational purposes.
+Apache License 2.0.
