@@ -2,7 +2,7 @@
 
 ## Input (cache)
 
-Datasets come from NYC TLC HTTPS URLs. Spark does not read Parquet over HTTPS, so files are stored under `data/cache/` before notebooks use them. Nothing large is committed to git.
+Datasets come from NYC TLC HTTPS URLs. Spark does not read Parquet over HTTPS, so the Jupyter kernel downloads files into `data/cache/` via `shared.config.ensure_workshop_data()` (called from `begin_module()` in the first cell of each module).
 
 | File | Source |
 |------|--------|
@@ -10,17 +10,7 @@ Datasets come from NYC TLC HTTPS URLs. Spark does not read Parquet over HTTPS, s
 | `yellow_tripdata_2024-02.parquet` | TLC trip data |
 | `taxi_zone_lookup.csv` | TLC zone lookup |
 
-Pre-download (optional):
-
-```bash
-./scripts/cache-data.sh
-```
-
-```powershell
-.\scripts\cache-data.ps1
-```
-
-Notebooks can also download missing files on first access via `shared.config.ensure_workshop_data()`.
+First module start may take a few minutes while ~100 MB downloads. Later runs skip files that already exist.
 
 ## Output (gitignored)
 
@@ -32,4 +22,4 @@ Notebooks can also download missing files on first access via `shared.config.ens
 
 ## Bind mount
 
-`./data` on the host maps to `/workspace/data` in master, workers, and Jupyter. Host-side cache scripts and in-container reads see the same files.
+`./data` on the host maps to `/workspace/data` in master, workers, and Jupyter. Downloads and warehouse files persist across container restarts.

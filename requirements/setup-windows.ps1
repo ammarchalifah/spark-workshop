@@ -23,6 +23,5 @@ try {
 
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  .\scripts\cache-data.ps1   # optional: pre-download datasets"
 Write-Host "  .\scripts\cluster-up.ps1   # build image and start cluster"
 Write-Host "  Open http://localhost:8888 in your browser"

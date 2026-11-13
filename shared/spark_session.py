@@ -91,9 +91,12 @@ def begin_module(app_name: str, extra_configs: dict[str, str] | None = None) -> 
     Start a clean Spark session for a new module notebook.
 
     Call this in the first cell of every module — especially after shutting down
-    a previous kernel. Stops any leftover session and binds the UI to port 4040.
+    a previous kernel. Ensures TLC files exist under data/cache/, stops any leftover
+    session, and binds the UI to port 4040.
     """
     stop_spark()
+    config.ensure_output_dirs()
+    config.ensure_workshop_data()
     return get_spark(app_name, extra_configs=extra_configs)
 
 

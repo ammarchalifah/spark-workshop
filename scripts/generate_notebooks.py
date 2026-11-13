@@ -48,11 +48,11 @@ def module_01():
             ),
             code(
                 "import sys\nsys.path.insert(0, '/workspace' if __import__('pathlib').Path('/workspace').exists() else '.')\n\n"
-                "from shared.spark_session import get_spark, ui_links, explain_plan\n"
+                "from shared.spark_session import begin_module, ui_links, explain_plan\n"
                 "from shared import config\n\n"
-                "spark = get_spark('module-01-how-spark-works')\nui_links()"
+                "spark = begin_module('module-01-how-spark-works')\nui_links()"
             ),
-            md("## Load Data\n\nNYC yellow taxi trips (public TLC dataset). First run downloads to `data/cache/` (~100 MB). Spark cannot read Parquet from HTTPS."),
+            md("## Load Data\n\n`begin_module()` already fetched missing TLC files into `data/cache/`. Read Parquet from disk — Spark cannot read HTTPS directly."),
             code(
                 "trips = spark.read.parquet(*config.yellow_taxi_paths())\n"
                 "print(f'Trips loaded — run an action to see row count')"

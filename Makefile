@@ -1,5 +1,5 @@
 # Optional convenience targets for macOS/Linux (Make is not required — see README).
-.PHONY: up down logs cache-data build clean
+.PHONY: up down logs build clean
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 
@@ -14,9 +14,6 @@ down:
 
 logs:
 	@./scripts/cluster-logs.sh
-
-cache-data:
-	@./scripts/cache-data.sh
 
 clean:
 	@./scripts/cluster-clean.sh

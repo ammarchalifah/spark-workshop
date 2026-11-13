@@ -35,19 +35,7 @@ Spark **4.1** ships with the published Iceberg 1.12 runtime JAR. The `iceberg-sp
 
 Install Docker first if the script fails: [requirements/SETUP.md](requirements/SETUP.md).
 
-### 2. (Optional) Pre-download datasets
-
-On slow networks, cache TLC files on the host (bind-mounted into containers):
-
-```bash
-./scripts/cache-data.sh          # macOS, Linux, Git Bash
-```
-
-```powershell
-.\scripts\cache-data.ps1       # Windows
-```
-
-### 3. Start the cluster
+### 2. Start the cluster
 
 ```bash
 ./scripts/cluster-up.sh          # macOS / Linux
@@ -66,7 +54,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 Open **http://localhost:8888** for Jupyter Lab.
 
-### 4. Stop / reset
+### 3. Stop / reset
 
 ```bash
 ./scripts/cluster-down.sh        # stop containers
@@ -136,7 +124,7 @@ spark = begin_module("my-app-name")
 ui_links()
 ```
 
-Call `begin_module()` in the **first cell** when switching notebooks so the driver binds to port 4040 and prior sessions are stopped.
+Call `begin_module()` in the **first cell** when switching notebooks. It downloads missing TLC files to `data/cache/` on first run (bind-mounted to the host), starts a fresh Spark session, and binds the UI to port 4040.
 
 ## Data
 
@@ -163,7 +151,7 @@ Lower executor memory in `docker/spark-defaults.conf` or give Docker more RAM.
 
 ### TLC download failures
 
-Run `scripts/cache-data.sh` or `scripts/cache-data.ps1`, then restart the cluster.
+Ensure the Jupyter container has outbound HTTPS. Re-run the first notebook cell (`begin_module`); downloads resume into `data/cache/`. If a file is corrupt, delete it under `data/cache/` and run the cell again.
 
 More: [docker/README.md](docker/README.md).
 

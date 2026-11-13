@@ -46,7 +46,7 @@ docker compose version
 
 Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/) with **WSL2** enabled.
 
-Use PowerShell for repo scripts (`cluster-up.ps1`, `cache-data.ps1`). Git Bash works for `.sh` helpers if you prefer.
+Use PowerShell for `cluster-up.ps1`, or Git Bash for `cluster-up.sh`.
 
 ## Start the lab
 

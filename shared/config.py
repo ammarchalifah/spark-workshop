@@ -41,24 +41,32 @@ def _download(url: str, dest: Path) -> None:
     """Download a file if not already cached."""
     if dest.exists():
         return
-    print(f"Downloading {dest.name} (~50 MB, first run only)...")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading {dest.name} from TLC (~50 MB each, first run only)...")
     urllib.request.urlretrieve(url, dest)
-    print(f"Cached at {dest}")
+    print(f"  → {dest}")
 
 
 def ensure_workshop_data() -> None:
     """
-    Download datasets to data/cache/ if missing.
+    Download datasets to data/cache/ if missing (runs in Jupyter; bind-mounted to ./data/cache).
 
-    Spark cannot read Parquet directly from HTTPS URLs — files must be on disk
-    (or on a supported filesystem like S3/HDFS with proper config).
+    Spark cannot read Parquet directly from HTTPS URLs — files must be on disk.
     """
+    needed = [
+        *(CACHE_DIR / f"yellow_tripdata_{y}-{m:02d}.parquet" for y, m in WORKSHOP_MONTHS),
+        CACHE_DIR / "taxi_zone_lookup.csv",
+    ]
+    if all(p.exists() for p in needed):
+        return
+
+    print("Preparing TLC datasets in data/cache/ (skipped files already present)...")
     for year, month in WORKSHOP_MONTHS:
         name = f"yellow_tripdata_{year}-{month:02d}.parquet"
         _download(yellow_taxi_url(year, month), CACHE_DIR / name)
 
     _download(TLC_ZONES, CACHE_DIR / "taxi_zone_lookup.csv")
+    print("Dataset cache ready.")
 
 
 def yellow_taxi_paths() -> list[str]:
