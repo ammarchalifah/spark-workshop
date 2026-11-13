@@ -1,36 +1,28 @@
-# Spark Workshop Setup (Windows)
+# Preflight: Docker only (Java, Python, PySpark, Jupyter live in the cluster image).
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $RepoRoot
 
-Write-Host "=== Spark Workshop Setup (Windows) ==="
+Write-Host "=== Spark lab preflight (Windows) ==="
 
-# Check Java
-try {
-    $javaVersion = java -version 2>&1 | Select-Object -First 1
-    Write-Host "Java: $javaVersion"
-} catch {
-    Write-Host "Java not found. Install with: winget install EclipseAdoptium.Temurin.17.JDK"
-    exit 1
-}
-
-# Check Docker
 try {
     $dockerVersion = docker --version
     Write-Host "Docker: $dockerVersion"
 } catch {
-    Write-Host "Docker not found. Install Docker Desktop: https://docs.docker.com/desktop/setup/install/windows-install/"
+    Write-Host "Docker not found. Install Docker Desktop (WSL2 backend):"
+    Write-Host "  https://docs.docker.com/desktop/setup/install/windows-install/"
     exit 1
 }
 
-# Python venv
-python -m venv .venv
-& .\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
-pip install -r requirements/requirements.txt
+try {
+    docker compose version | Write-Host
+} catch {
+    Write-Host "Docker Compose not available. Update Docker Desktop."
+    exit 1
+}
 
 Write-Host ""
-Write-Host "Setup complete!"
-Write-Host "  make cache-data   # optional: pre-download datasets (use WSL or Git Bash)"
-Write-Host "  make up           # start Docker cluster"
+Write-Host "Next steps:"
+Write-Host "  .\scripts\cache-data.ps1   # optional: pre-download datasets"
+Write-Host "  .\scripts\cluster-up.ps1   # build image and start cluster"
 Write-Host "  Open http://localhost:8888 in your browser"

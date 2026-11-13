@@ -1,7 +1,5 @@
 # Module 04 — UDF Performance
 
-**Duration:** ~60 minutes
-
 ## Learning Objectives
 
 - Understand JVM ↔ Python serialization cost

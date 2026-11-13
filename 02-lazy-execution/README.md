@@ -1,7 +1,5 @@
 # Module 02 — Lazy Execution
 
-**Duration:** ~60 minutes
-
 ## Learning Objectives
 
 - Distinguish transformations (lazy) from actions (eager)

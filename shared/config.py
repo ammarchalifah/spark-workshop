@@ -1,4 +1,4 @@
-"""Central configuration for the Spark workshop."""
+"""Central configuration for the Spark lab environment."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 import urllib.request
 from pathlib import Path
 
-# Detect Docker vs local mode
+# Jupyter runs inside the docker-compose stack; notebooks must use the cluster driver.
 IN_DOCKER = Path("/workspace").exists() and os.environ.get("SPARK_DRIVER_HOST") == "jupyter-lab"
 WORKSPACE_ROOT = Path("/workspace") if IN_DOCKER else Path(__file__).resolve().parent.parent
 
@@ -17,8 +17,8 @@ OUTPUT_BASE = DATA_ROOT / "output"
 WAREHOUSE_DIR = OUTPUT_BASE / "warehouse"
 CHECKPOINT_DIR = OUTPUT_BASE / "checkpoints"
 
-# Spark cluster
-SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077" if IN_DOCKER else "local[*]")
+# Spark cluster (Docker only — set SPARK_MASTER to override)
+SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
 CATALOG_NAME = "local"
 
 # Public data URLs (NYC TLC)
@@ -49,9 +49,9 @@ def _download(url: str, dest: Path) -> None:
 
 def ensure_workshop_data() -> None:
     """
-    Download workshop datasets to data/cache/ if missing.
+    Download datasets to data/cache/ if missing.
 
-    Spark cannot read Parquet directly from HTTPS URLs — files must be local
+    Spark cannot read Parquet directly from HTTPS URLs — files must be on disk
     (or on a supported filesystem like S3/HDFS with proper config).
     """
     for year, month in WORKSHOP_MONTHS:
@@ -62,13 +62,13 @@ def ensure_workshop_data() -> None:
 
 
 def yellow_taxi_paths() -> list[str]:
-    """Return local paths to cached yellow taxi Parquet files."""
+    """Return paths to cached yellow taxi Parquet files."""
     ensure_workshop_data()
     return [str(CACHE_DIR / f"yellow_tripdata_{year}-{month:02d}.parquet") for year, month in WORKSHOP_MONTHS]
 
 
 def zones_path() -> str:
-    """Return local path to cached taxi zone lookup CSV."""
+    """Return path to cached taxi zone lookup CSV."""
     ensure_workshop_data()
     return str(CACHE_DIR / "taxi_zone_lookup.csv")
 

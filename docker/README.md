@@ -1,4 +1,4 @@
-# Docker Cluster Setup
+# Docker cluster
 
 ## Services
 
@@ -11,36 +11,32 @@
 
 ## Commands
 
-```bash
-# From repo root
-make build    # Build images
-make up       # Start cluster
-make down     # Stop cluster
-make logs     # Follow logs
-```
-
-## Scaling Workers
+From the repository root:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --scale spark-worker-1=0 --scale spark-worker-2=0
-docker compose -f docker/docker-compose.yml up -d --scale spark-worker=3
+./scripts/cluster-up.sh
+./scripts/cluster-down.sh
+./scripts/cluster-logs.sh
 ```
 
-Note: The current compose file defines two named workers for predictable UI ports (8081, 8082). To scale beyond two, add additional worker service definitions or use a generic worker template.
-
-## Gluten Profile (Module 06)
+Or use Compose directly:
 
 ```bash
-make up-gluten
+docker compose -f docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml down
+docker compose -f docker/docker-compose.yml logs -f
 ```
 
-Gluten requires manual download of the 1.7.0 Spark 4.1 binary. See [../06-java-gc-gluten/README.md](../06-java-gc-gluten/README.md).
+## Scaling workers
+
+The compose file defines two named workers so UI ports stay at 8081 and 8082. To change capacity, edit `docker-compose.yml` or add worker service definitions.
 
 ## Troubleshooting
 
 ### Worker cannot connect to master
 
-Ensure the master container is healthy before workers start. Check logs:
+Wait for the master to be healthy:
 
 ```bash
 docker logs spark-master
@@ -49,25 +45,21 @@ docker logs spark-worker-1
 
 ### Jupyter cannot reach executors
 
-The driver runs in client mode inside `jupyter-lab`. These settings are required:
+The driver runs in client mode inside `jupyter-lab`. Required settings (in `spark-defaults.conf`):
 
 - `spark.driver.host=jupyter-lab`
 - `spark.driver.bindAddress=0.0.0.0`
 
-Both are set in `spark-defaults.conf`.
+### Permission errors on `data/output`
 
-### Permission errors on data volume
-
-If you see `Permission denied` on `/workspace/data/output`, rebuild and recreate the volume:
+Recreate after `entrypoint-init.sh` runs:
 
 ```bash
-make down
+./scripts/cluster-down.sh
 docker compose -f docker/docker-compose.yml down -v
-make up
+./scripts/cluster-up.sh
 ```
-
-The `entrypoint-init.sh` script creates output dirs and fixes ownership on startup.
 
 ### Port already in use
 
-Change host port mappings in `docker-compose.yml` if 8080, 8888, or 4040 are occupied.
+Change host port mappings in `docker-compose.yml` if 8080, 8888, or 4040 conflict.

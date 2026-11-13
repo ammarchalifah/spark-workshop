@@ -1,7 +1,5 @@
 # Module 03 — Storage I/O Performance
 
-**Duration:** ~60 minutes
-
 ## Learning Objectives
 
 - Compare read performance: JSON, Parquet (serial vs vectorized), Iceberg

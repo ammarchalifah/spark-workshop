@@ -49,6 +49,12 @@ def get_spark(app_name: str = "spark-workshop", extra_configs: dict[str, str] | 
     if _spark is not None:
         return _spark
 
+    if not config.IN_DOCKER:
+        raise RuntimeError(
+            "Spark sessions run only inside the Docker Jupyter container. "
+            "Start the cluster (see README), open http://localhost:8888, and run notebooks there."
+        )
+
     config.ensure_output_dirs()
     _register_cleanup()
 
