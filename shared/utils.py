@@ -21,6 +21,17 @@ def timer(label: str = "operation") -> Generator[None, None, None]:
     print(f"[{label}] completed in {elapsed:.2f}s")
 
 
+def timed_read(spark: SparkSession, read_fn) -> tuple[DataFrame, float]:
+    """Run a read lambda, count rows (action), return (df, seconds). Clears cache first."""
+    spark.catalog.clearCache()
+    start = time.perf_counter()
+    df = read_fn()
+    n = df.count()
+    elapsed = time.perf_counter() - start
+    print(f"read+count → {n:,} rows in {elapsed:.2f}s")
+    return df, elapsed
+
+
 def timed_action(df: DataFrame, action: str = "count") -> tuple[int | None, float]:
     """
     Run a DataFrame action and return (result, elapsed_seconds).

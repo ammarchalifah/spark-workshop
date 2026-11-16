@@ -1,11 +1,7 @@
-# Module 03 — Storage I/O Performance
+# Module 03 — Storage I/O & Iceberg
 
-## Learning Objectives
+- JSON, CSV, Parquet, Iceberg read/write benchmarks
+- Explicit schemas for type safety
+- Iceberg: snapshots, **time travel**, **partition evolution**, on-disk volume (initial → sprawl → `rewrite_data_files`)
 
-- Compare read performance: JSON, Parquet (serial vs vectorized), Iceberg
-- Compare write performance: JSON, CSV, Parquet, Iceberg
-- Understand columnar vs row-based storage trade-offs
-
-## Notebook
-
-`03_storage_io.ipynb` — read/write benchmarks with timing output.
+Notebook: `03_storage_io.ipynb`
