@@ -95,12 +95,14 @@ flowchart TB
 
 | # | Topic | Directory |
 |---|-------|-----------|
-| 01 | Distributed execution, Spark UI, query plans | [01-how-spark-works/](01-how-spark-works/) |
-| 02 | Lazy evaluation, actions, DAG branching, cache/checkpoint | [02-lazy-execution/](02-lazy-execution/) |
-| 03 | Storage I/O — JSON, Parquet, Iceberg benchmarks | [03-storage-io/](03-storage-io/) |
-| 04 | UDF cost — Python vs Pandas vs native Spark | [04-udfs/](04-udfs/) |
-| 05 | Shuffle, joins, SPJ, Iceberg table ordering | [05-shuffle-sort/](05-shuffle-sort/) |
-| 06 | JVM heap and GC in the Spark UI | [06-java-gc/](06-java-gc/) |
+| 01 | Spark API parity & query plans | [01-spark-plans/](01-spark-plans/) |
+| 02 | Optimizer rules & join strategies | [02-plan-joins/](02-plan-joins/) |
+| 03 | Storage I/O, types, Iceberg (DSv2) | [03-storage-io/](03-storage-io/) |
+| 04 | Lazy execution, cache, observation | [04-lazy-execution/](04-lazy-execution/) |
+| 05 | Locality, shuffle, SPJ | [05-data-locality/](05-data-locality/) |
+| 06 | UDF performance | [06-udfs/](06-udfs/) |
+
+Coverage checklist: [MODULE_COVERAGE_MATRIX.md](MODULE_COVERAGE_MATRIX.md).
 
 First cell in each notebook:
 
