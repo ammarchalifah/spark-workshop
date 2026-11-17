@@ -13,6 +13,7 @@ __pycache__/
 data/output/
 data/cache/
 data/warehouse/
+data/.jupyter/
 
 # Docker / local overrides
 .env

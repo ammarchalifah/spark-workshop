@@ -57,13 +57,4 @@ Jupyter is on the host port mapped to `8888` in `docker/docker-compose.yml` (def
 | Notebooks, `shared/` | Bind mount `..` → `/workspace` |
 | `data/cache`, `data/output` | Bind mount `./data` |
 
-## Contributors: host Python (optional)
-
-Not required to run the lab. For local IDE hints only:
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements/requirements.txt
-```
-
-Notebooks still execute in Jupyter inside Docker.
+You do not need Python or Java on the host to run the notebooks—use Jupyter inside Docker only.
