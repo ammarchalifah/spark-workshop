@@ -1,12 +1,15 @@
-# Python requirements (Docker image)
+# Python dependencies (cluster image)
 
-`requirements.txt` is copied into `docker/Dockerfile` and installed with `pip` when you build the cluster image. It is **not** meant for a host virtual environment unless you are editing the repo with local IDE support.
+These packages are installed in the **Docker image** when you build the stack (`docker/Dockerfile` reads this file).
 
-- `pyspark` — matches the Spark version in the base image  
-- `jupyterlab` — started by `entrypoint-jupyter.sh`  
-- `pandas`, `pyarrow`, `ipykernel` — notebook and Pandas UDF module  
+| Package | Role |
+|---------|------|
+| `pyspark` | Spark version aligned with the base image |
+| `jupyterlab` | Notebook server in `jupyter-lab` |
+| `pandas`, `pyarrow` | Pandas UDF module |
+| `ipykernel` | Jupyter kernels |
 
-Change this file when you add notebook dependencies, then rebuild the image:
+After changing `requirements.txt`, rebuild and restart:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build

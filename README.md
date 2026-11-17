@@ -1,14 +1,15 @@
 # Spark + Iceberg Lab
 
-PySpark exercises on a **multi-node Spark cluster** in Docker, with Jupyter Lab as the driver and **Apache Iceberg** as the default table format.
+Hands-on PySpark on a **multi-node Spark cluster** in Docker. Jupyter Lab is the driver; **Apache Iceberg** is the default table format.
 
 ## Prerequisites
 
-**Docker** with the **Compose** plugin ([requirements/SETUP.md](requirements/SETUP.md)). That is the only host dependency.
+- **Docker** with the [Compose](https://docs.docker.com/compose/) plugin  
+- **8 GB+ RAM** assigned to Docker (16 GB is more comfortable)
 
-Java 17, Python, PySpark, Jupyter, and Iceberg are in the cluster image (`docker/Dockerfile`). Allocate **8 GB+ RAM** to Docker (16 GB recommended).
+Java, Python, PySpark, Jupyter, and Iceberg are included in the cluster image. Host install details: [requirements/SETUP.md](requirements/SETUP.md).
 
-## Stack (inside the image)
+## Stack (cluster image)
 
 | Component | Version |
 |-----------|---------|
@@ -17,15 +18,39 @@ Java 17, Python, PySpark, Jupyter, and Iceberg are in the cluster image (`docker
 | Java | 17 |
 | Jupyter | Lab 4.x |
 
-## Run the cluster
+## Quick start
 
-From the **repository root**:
+From the repository root:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Stop:
+Open **Jupyter Lab** at http://localhost:8888 (default host port for container `8888`).
+
+Work through the modules in order (`01` → `06`). In each notebook, run the **first code cell** first—it calls `begin_module()`, which fetches NYC TLC data when needed and starts a Spark session.
+
+```python
+from shared.spark_session import begin_module, ui_links
+
+spark = begin_module("module-01-spark-plans")
+ui_links()
+```
+
+The **Spark application UI** is on host port **4040** while a session is active (after that first cell runs).
+
+### Default ports
+
+| Service | Default URL |
+|---------|-------------|
+| Jupyter Lab | http://localhost:8888 |
+| Spark application UI | http://localhost:4040 |
+| Spark master UI | http://localhost:8080 |
+| Worker 1 / 2 UI | http://localhost:8081 , http://localhost:8082 |
+
+To change ports, edit `ports:` in [docker/docker-compose.yml](docker/docker-compose.yml).
+
+### Stop and reset
 
 ```bash
 docker compose -f docker/docker-compose.yml down
@@ -37,31 +62,23 @@ Logs:
 docker compose -f docker/docker-compose.yml logs -f
 ```
 
-Reset local lab data (optional):
+Remove local outputs and cached TLC files:
 
 ```bash
 docker compose -f docker/docker-compose.yml down -v
 rm -rf data/output data/cache
 ```
 
-Open Jupyter at the **host port** mapped to container `8888` in `docker/docker-compose.yml` (default `8888` → http://localhost:8888). If you remap ports, use your chosen host ports for all UIs below.
+## Modules
 
-GNU Make wraps the same compose commands (`make up`, `make down`, …) on macOS/Linux when Make is installed.
-
-## Port map (default compose bindings)
-
-Host ports are defined in `docker/docker-compose.yml`. Change the left-hand side of each `ports:` entry if something is already bound on your machine.
-
-| Service | Container port | Default host port | Purpose |
-|---------|----------------|-------------------|---------|
-| jupyter-lab | 8888 | 8888 | Jupyter Lab |
-| jupyter-lab | 4040 | 4040 | Spark application UI |
-| spark-master | 8080 | 8080 | Master UI |
-| spark-master | 7077 | 7077 | Spark RPC (cluster internal; usually no browser) |
-| spark-worker-1 | 8081 | 8081 | Worker 1 UI |
-| spark-worker-2 | 8082 | 8082 | Worker 2 UI |
-
-`shared/config.py` exposes `MASTER_UI_URL` and `APP_UI_URL` for notebooks using these defaults; update them if you remap ports.
+| # | Topic | Directory |
+|---|-------|-----------|
+| 01 | Spark API parity & query plans | [01-spark-plans/](01-spark-plans/) |
+| 02 | Optimizer rules & join strategies | [02-plan-joins/](02-plan-joins/) |
+| 03 | Storage I/O, types, Iceberg | [03-storage-io/](03-storage-io/) |
+| 04 | Lazy execution, cache, observation | [04-lazy-execution/](04-lazy-execution/) |
+| 05 | Locality, shuffle, SPJ | [05-data-locality/](05-data-locality/) |
+| 06 | UDF performance | [06-udfs/](06-udfs/) |
 
 ## Architecture
 
@@ -76,14 +93,13 @@ flowchart TB
         W1["spark-worker-1"]
         W2["spark-worker-2"]
         Jupyter["jupyter-lab"]
-        Data[("bind mount\n./data → /workspace/data")]
+        Data[("./data → /workspace/data")]
     end
 
-    TLC["NYC TLC CloudFront"]
+    TLC["NYC TLC HTTPS"]
 
     Browser --> Jupyter
     Browser --> Master
-
     Jupyter -->|"spark://spark-master:7077"| Master
     W1 --> Master
     W2 --> Master
@@ -91,53 +107,20 @@ flowchart TB
     Jupyter --> TLC
 ```
 
-## Modules
-
-| # | Topic | Directory |
-|---|-------|-----------|
-| 01 | Spark API parity & query plans | [01-spark-plans/](01-spark-plans/) |
-| 02 | Optimizer rules & join strategies | [02-plan-joins/](02-plan-joins/) |
-| 03 | Storage I/O, types, Iceberg (DSv2) | [03-storage-io/](03-storage-io/) |
-| 04 | Lazy execution, cache, observation | [04-lazy-execution/](04-lazy-execution/) |
-| 05 | Locality, shuffle, SPJ | [05-data-locality/](05-data-locality/) |
-| 06 | UDF performance | [06-udfs/](06-udfs/) |
-
-Coverage checklist: [MODULE_COVERAGE_MATRIX.md](MODULE_COVERAGE_MATRIX.md).
-
-First cell in each notebook:
-
-```python
-from shared.spark_session import begin_module, ui_links
-
-spark = begin_module("my-app-name")
-ui_links()
-```
-
-`begin_module()` downloads missing TLC data into `data/cache/` on first run, then starts Spark.
-
 ## Data
 
-TLC inputs are fetched at runtime (not in git). Warehouse output: `data/output/` ([data/README.md](data/README.md)).
+Trip Parquet files and zone lookup CSV are downloaded into `data/cache/` on first `begin_module()` (not committed to git). Iceberg warehouse and other writes go to `data/output/`. See [data/README.md](data/README.md).
 
 ## Troubleshooting
 
-### Application UI unreachable
+| Issue | What to try |
+|-------|-------------|
+| `:4040` not reachable | Run the first cell (`begin_module`); UI exists only while the driver is running |
+| `Connection refused` to `spark-master:7077` | Wait for workers; `docker compose -f docker/docker-compose.yml logs -f` |
+| OOM | Give Docker more RAM or lower memory in `docker/spark-defaults.conf` |
+| TLC download fails | Re-run `begin_module`; delete a corrupt file under `data/cache/` |
 
-The app UI is only up while a Spark session runs. Run the first cell (`begin_module`) in the next notebook. Use the host port mapped to container `4040` (default 4040).
-
-### `Connection refused` to `spark-master:7077`
-
-Wait for workers: `docker compose -f docker/docker-compose.yml logs -f`.
-
-### OOM
-
-Tune `docker/spark-defaults.conf` or increase Docker memory.
-
-### TLC download failures
-
-Re-run `begin_module`. Delete a bad file under `data/cache/` and retry.
-
-See [docker/README.md](docker/README.md).
+More: [docker/README.md](docker/README.md).
 
 ## License
 
