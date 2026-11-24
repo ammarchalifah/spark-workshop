@@ -26,7 +26,8 @@ TLC_BASE = "https://d37ci6vzurychx.cloudfront.net"
 TLC_YELLOW = f"{TLC_BASE}/trip-data/yellow_tripdata_{{year}}-{{month:02d}}.parquet"
 TLC_ZONES = f"{TLC_BASE}/misc/taxi_zone_lookup.csv"
 
-WORKSHOP_MONTHS: list[tuple[str, int]] = [("2024", 1), ("2024", 2)]
+# 20 consecutive months of yellow taxi trips: 2024-01 through 2025-08
+WORKSHOP_MONTHS: list[tuple[str, int]] = [("2024", m) for m in range(1, 13)] + [("2025", m) for m in range(1, 9)]
 
 # UI URLs (host-facing)
 MASTER_UI_URL = "http://localhost:8080"

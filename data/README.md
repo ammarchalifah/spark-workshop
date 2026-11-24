@@ -6,11 +6,11 @@ Datasets come from NYC TLC HTTPS URLs. Spark does not read Parquet over HTTPS, s
 
 | File | Source |
 |------|--------|
-| `yellow_tripdata_2024-01.parquet` | TLC trip data |
-| `yellow_tripdata_2024-02.parquet` | TLC trip data |
+| `yellow_tripdata_2024-01.parquet` … `yellow_tripdata_2024-12.parquet` | TLC trip data (12 files) |
+| `yellow_tripdata_2025-01.parquet` … `yellow_tripdata_2025-08.parquet` | TLC trip data (8 files) |
 | `taxi_zone_lookup.csv` | TLC zone lookup |
 
-First module start may take a few minutes while ~100 MB downloads. Later runs skip files that already exist.
+The 20 trip files are defined by `WORKSHOP_MONTHS` in `shared/config.py`. First module start may take a few minutes while ~1 GB downloads. Later runs skip files that already exist.
 
 ## Output (gitignored)
 
